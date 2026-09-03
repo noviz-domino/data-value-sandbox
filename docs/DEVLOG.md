@@ -104,9 +104,11 @@ On top of that, plain Euclidean distance on lat/lon is not real distance on a sp
 
 ## Where it stopped, and why
 
-The project ends at the scatter plot. There is no tuning, no cross-validation, no comparison model, and no attempt at the original question about risk by region.
+The project ends at the scatter plot. No tuning, no cross-validation, no second model to compare against, and nothing built toward the simulation the assignment actually asked for.
 
-Partly that was the course — it was a practice assignment with a deadline and the requirement was to get an end-to-end pipeline working, which it does. Partly it was that I did not know what to do next. I had a number, the number looked fine, so it felt finished. Knowing to distrust a good-looking number is the thing I actually took away from this, and I only really learned it while writing this log months later.
+Partly that was the course — a practice assignment with a deadline, where the requirement was an end-to-end pipeline that runs, which this is. Partly it was that I did not know what to do next. I had a number, the number looked fine, so it felt finished. Learning to distrust a good-looking number is the thing I actually took from this project, and I only really learned it while writing this log months afterwards.
+
+The bigger miss is `gname`. The dataset labels which organisation carried out each attack, and the goal was predicting what a specific group does next. I loaded eleven columns and that was not one of them. Grouping by `gname` and looking at how one organisation's attacks move across space and time would have been the closest I could realistically get to the actual assignment, using data I already had open in front of me. I did not think of it, and that is not a resource problem — it is a framing problem. I optimised for "get a model working" instead of "answer the question".
 
 If I picked it back up, in order:
 
@@ -114,4 +116,4 @@ If I picked it back up, in order:
 2. Replace the positional labels with a `.map()`.
 3. Scale the coordinates, or switch to a haversine metric — scikit-learn's `BallTree` supports it.
 4. Try a few values of k with cross-validation instead of accepting the default.
-5. Only then think about whether the original risk question can be framed at all with an events-only dataset.
+5. Reload with `gname` and `year`, pick the handful of groups with enough events to model, and see whether one group's attack locations are predictable from its own history. That is the first step that points at the original goal rather than away from it.

@@ -4,11 +4,19 @@ Course project, Beijing Institute of Technology, big data class. Solo work, Apri
 
 A note on this document: I wrote it up after the project was already finished, working from the notebooks and my own memory. The original plan lived in my head and in class notes, not in a file. So treat this as a reconstruction of what I set out to do, not as a document I wrote before starting. I have tried not to rewrite history in my favour — the section on scope creep at the bottom is the honest part.
 
-## What I wanted to answer
+## The assignment, and what I wanted to build
 
-The starting question was broad: **given a location, what can the historical data tell me about terrorism there?**
+The brief was to build a **prediction simulation from terrorism big data**. Not a report, not a dashboard of past counts — something that takes what has already happened and says something about what has not happened yet.
 
-I was interested in whether the patterns are strong enough that geography alone carries information. Not "which country has more attacks" — that is just a count — but whether the *character* of an attack is predictable from where it happened.
+The version I had in my head looked like this. Combine several sources: police records, military movement data, and activity histories for individual terrorist organisations. With those joined together and enough infrastructure behind it, you could ask questions like *where is this particular group likely to strike next, and by what method?* Push it further and the same shape of model stops being only about terrorism — the movements and tendencies of a state's military are the same kind of problem, just with different actors and better-funded data.
+
+That is the target I was aiming at. I want to be clear that this repository does not contain it.
+
+What I could actually get my hands on inside a course project was one dataset: GTD. So the question became a smaller one, sitting underneath the big one.
+
+**Is the character of an attack predictable from where it happened at all?**
+
+This matters because it is the assumption the whole simulation rests on. If location carries no usable signal about the nature of an event, then joining five more data sources and renting a bigger machine will not save it. Better to test the premise on one dataset first than to discover it after building the pipeline.
 
 ## Dataset
 
@@ -44,13 +52,15 @@ The features were latitude and longitude only. That was deliberate. If I had thr
 
 Here is where the scope narrowed, and I want to be clear about it.
 
-"Terrorism risk for a location" is not directly a column in this dataset. There is no risk score to predict. To build a real risk model I would have needed to construct negative examples — places and times where nothing happened — and the dataset only contains events. Every row is an attack. A model trained on attacks only cannot tell you where an attack will happen, because it has never seen a non-attack.
+The obvious target for a prediction simulation is risk: *how likely is an attack here?* That is not a column in this dataset, and it cannot be made into one without work I could not do in the time available. Every row in GTD is an attack that happened. There are no negative examples — no records of a place and date where nothing occurred. A model trained on attacks alone has never seen a non-attack, so it has nothing to contrast against and cannot answer "will something happen here".
 
-I did not have the time or the background to do that properly inside a course project. So I picked a target that *was* in the data and was still location-related: **weapon type**.
+Getting around that means generating negatives yourself: sampling locations and time windows with no recorded event, and then defending the sampling choices, because they decide the answer. That is a project on its own.
+
+So I picked a target that *was* already in the data and still depended on location: **weapon type**.
 
 Restated, the question I actually built for is: *if an attack happened at these coordinates, which of the four weapon categories was most likely used?*
 
-That is a much smaller question than the one I started with. It is still a real one.
+It is a much smaller question than the assignment. But it is the right small question, because it isolates the premise. If coordinates can predict the weapon, then location carries real information about the character of an event, and the larger simulation has something to stand on. If they cannot, the larger simulation was never going to work regardless of how much data got bolted on.
 
 ## Scope
 
@@ -64,13 +74,16 @@ In scope:
 
 Out of scope, and not attempted:
 
+- Joining any second data source. The police / military / group-history combination described at the top stayed a sketch
+- Per-organisation modelling. `gname` (the group name) is in the dataset and I never touched it, which in hindsight was the closest thing to the real goal that was actually within reach
 - Predicting whether an attack occurs at all (see above — the data does not support it without a lot more work)
 - Time-series or trend forecasting
 - Hyperparameter search, cross-validation, alternative models
-- Any use of the text columns
 
 ## Success criteria
 
 I set the bar at: the model trains, evaluates on held-out data, and I can explain what the number means.
 
-In hindsight that bar was too low, and it is the main thing I would change. "It runs and produces a number" does not tell you whether the number is any good. I should have written down a baseline to beat before training anything. I did not, and I only worked out afterwards that the majority class alone gets 59.5%. That comparison is in the dev log and the README.
+In hindsight that bar was too low, and it is the main thing I would change. "It runs and produces a number" does not tell you whether the number is any good. I should have written down a baseline to beat before training anything. I did not, and I only worked out afterwards that the majority class alone gets 59.5%, so the model's real contribution is 8.5 points rather than 68. That comparison is in the dev log and the README.
+
+For the premise the project was testing, the honest verdict is *partly*. Location does carry signal about the character of an attack — the scatter plot makes that visible and the model confirms it. But two coordinates buy 8.5 points, which is thin. Read generously, that is an argument for the multi-source design I sketched at the start rather than against it: if geography alone gets you this far, the group's own history and the timing are probably where the rest of the signal is.
