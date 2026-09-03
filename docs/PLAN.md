@@ -8,7 +8,7 @@ A note on this document: I wrote it up after the project was already finished, w
 
 The brief was to build a **prediction simulation from terrorism big data**. Not a report, not a dashboard of past counts — something that takes what has already happened and says something about what has not happened yet.
 
-The version I had in my head looked like this. Combine several sources: police records, military movement data, and activity histories for individual terrorist organisations. With those joined together and enough infrastructure behind it, you could ask questions like *where is this particular group likely to strike next, and by what method?* Push it further and the same shape of model stops being only about terrorism — the movements and tendencies of a state's military are the same kind of problem, just with different actors and better-funded data.
+The version I had in my head looked like this. Combine several sources: police records, and activity histories for individual organisations. With those joined together and enough infrastructure behind it, you could ask *where is this particular group likely to strike next, and by what method?* Counting what already happened and projecting what happens next are different jobs, and the brief asked for the second one.
 
 That is the target I was aiming at. I want to be clear that this repository does not contain it.
 
