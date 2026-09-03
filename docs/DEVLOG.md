@@ -1,6 +1,8 @@
-# Dev log
+# Dev log — phase 1 (April 2026)
 
-Working notes for the GTD project. I did not keep a diary while building it, so this is written up afterwards by reading back through my own notebooks. It is ordered by what I did rather than by date. Where I found something wrong with my own work while writing this, I left it in.
+Working notes for the course project. I did not keep a diary while building it, so this is written up afterwards by reading back through the notebooks. It is ordered by what I did rather than by date. Where I found something wrong with my own work while writing this, I left it in.
+
+Phase 2 (from September 2026) is a separate rebuild and will get its own log.
 
 ---
 

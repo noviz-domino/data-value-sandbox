@@ -1,8 +1,10 @@
-# Project plan — GTD terrorism analysis
+# Project plan — GTD terrorism analysis (phase 1)
 
-Course project, Beijing Institute of Technology, big data class. Solo work, April 2026.
+Course project, Beijing Institute of Technology, big data class. April 2026.
 
-A note on this document: I wrote it up after the project was already finished, working from the notebooks and my own memory. The original plan lived in my head and in class notes, not in a file. So treat this as a reconstruction of what I set out to do, not as a document I wrote before starting. I have tried not to rewrite history in my favour — the section on scope creep at the bottom is the honest part.
+A note on this document: I wrote it up after the project was already finished, working from the notebooks and my own memory. The original plan lived in my head and in class notes, not in a file. So treat this as a reconstruction of what I set out to do, not as a document I wrote before starting. I have tried not to rewrite history in my favour — the section at the bottom on where the scope slipped is the honest part.
+
+Phase 2 of this repository (from September 2026) is a separate effort and is not covered here.
 
 ## The assignment, and what I wanted to build
 
