@@ -93,12 +93,16 @@ export function simulate({ seed, landTest }) {
       // 3. UNIT LAYER — 조직이 보유한 각 파벌(branch)마다 오늘 사건이 발생하는지 판정한다.
       org.branches.forEach((branchDef) => {
         const branch = branchDef.type;
-        // effectiveTempo = baseTempo * directiveMult * seasonalFactor, 파벌 수만큼 나눠 배분.
+        // effectiveTempo = baseTempo * directiveMult * seasonalFactor, 파벌별 비중(share)만큼 배분.
+        // share는 한 조직 안에서 합이 1이므로(예: TIDEBREAK ground 0.6 + naval 0.4) 조직당 총
+        // 기대 이벤트 수는 균등 배분(1/파벌수)과 동일하고, 파벌 간 비중만 실제로 반영된다.
+        // 이렇게 해야 오라클(analysis.js)이 읽는 share가 실제 생성 규칙과 일치해 ceiling이
+        // 근사가 아닌 참 상한이 된다.
         // 마지막 *1.9는 프로토타입에서 그대로 가져온 튜닝 상수:
-        // 5년 합계 이벤트 수가 SPEC §17이 요구하는 1500~2500(본 프로젝트 목표 1500~3000) 구간에
-        // 들어오도록 40회 rejection sampling으로 인한 실패율(특히 naval/좁은 반경)을 보정한다.
+        // 5년 합계 이벤트 수가 목표 1500~3000 구간에 들어오도록 40회 rejection sampling으로 인한
+        // 실패율(특히 naval/좁은 반경)을 보정한다.
         const tempo =
-          (org.baseTempo * directive.tempoMult * seasonalFactor) / org.branches.length * 1.9;
+          org.baseTempo * directive.tempoMult * seasonalFactor * branchDef.share * 1.9;
         if (rng() >= tempo) return; // 오늘 이 파벌은 사건 없음
 
         const effectiveRadius = Math.min(RANGE[branch], org.baseRadius * directive.radiusMult);
