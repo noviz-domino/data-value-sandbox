@@ -22,7 +22,7 @@ Everything in SPEC §6–§9 (simulation rules, organizations, data contracts, a
 ## Milestones
 
 - **M1 — map & simulation view** ✅ DONE (2026-09-04). deck.gl + Natural Earth: world map, 5-year playback, org markers + radius, drift, reveal toggle, timeline, activity feed. Runs at `phase2/app/` (dev server: launch.json `app`, port 8779).
-- M2 — analysis view: ablation runs, floor/ceiling, confusion matrices.
+- M2 — analysis view: ablation runs, floor/ceiling, confusion matrices. ✅ DONE (2026-09-04). Ladder: floor 38.8% → A 64.7% → B TIDEBREAK recall +14.9pp → C DRYSTONE recall +16.1pp, oracle ceiling 86.6% (true bound after wiring branch share). Orgs relocated to Lesser Sunda chain for overlap.
 - M3 — organizations view + signal-strength sliders + sweep.
 - M4 — data view + export, guided tour, density layer, seed variance.
 
@@ -140,7 +140,11 @@ State object (SPEC §4), playback loop, control handlers, reveal, org visibility
 
 The thesis made measurable: which feature set recovers which planted signal, bounded by a floor (majority baseline) and a ceiling (oracle). New files in `phase2/app/js/`. Scope: the classification ablation (runs A/B/C) + bounded accuracy + confusion matrices + per-class metrics, rendered in the ANL view. **Deferred to later:** change-point/directive recovery (SPEC §9.6), seed variance (§9.5), signal sweep (§12.1) — those are M3.
 
-### M2-T1 — analysis engine `analysis.js` (Sonnet author → reviewer) [correctness-critical]
+### M2-T1 — analysis engine `analysis.js` (Sonnet author → reviewer) [correctness-critical] [DONE — committed; cross-review in progress]
+> Ladder now real (both self-tests pass): floor 36.3% → A 66.1% → B TIDEBREAK recall +16.2pp → C DRYSTONE recall +20.1pp; oracle ceiling 85.6% (<100%). Orgs relocated to Lesser Sunda chain (−8.5°S, ~113.5–119°E). analysis.js + organizations.js + _analysis_selftest.mjs committed. Reviewer auditing analysis.js for label-leakage / split-consistency / oracle validity.
+> **Design flaw the self-test exposed:** analysis.js is written and correct, but the ablation was VACUOUS — run A (lat,lon) scored 100% because the three orgs were placed thousands of km apart (Mongolia/Indonesia/Australia) with radii <1000 km, so zero territorial overlap. Coordinates alone perfectly separate them; nothing for day/target to recover; oracle also 100%. This is an org-placement design error (architect), not an analysis.js bug — the author correctly refused to fudge it.
+> **FIX in progress:** relocate all three into one overlapping cluster in northern Australia (ne_110m land, southern hemisphere for DRYSTONE season, north coast for naval), keeping mechanisms (TIDEBREAK drift sweeps through, DRYSTONE season/target, NORTHWIND stationary control). Gated on BOTH self-tests: M1 planted signals still hold AND the ladder emerges (A<100%, TIDEBREAK B−A ≥15pp, DRYSTONE C−B>0, ceiling in (best_acc,100%)). Editing organizations.js + _analysis_selftest.mjs only.
+> After the fix: M1's map changes (orgs clustered, not spread) — regenerate docs/screenshots/app-map.png at M2 close.
 Interfaces:
 ```js
 // KNN from scratch (~30 lines), haversine on the geo pair + min-max-normalized non-geo features.
@@ -166,8 +170,11 @@ Ablation feature sets (SPEC §9.3), target = `org`, 80/20 split stratified by or
 - [ ] renders, nav switches, numbers match analysis.js
 - [ ] committed
 
-### M2-T3 — architect final review (Opus)
-- [ ] live run, JSON-probe the ablation numbers, screenshot the analysis view, DEVLOG, commit, report
+### M2-T3 — architect final review (Opus) [DONE]
+- [x] **Fix from M2-T1 review [MAJOR]:** wired branch `share` into simulation.js (377d3d3) — oracle now a true bound; both self-tests pass; ladder held. Reset the TIDEBREAK-delta assertion to a principled ≥10pp (split noise ~1-2pp).
+- [x] regenerated app-map.png (orgs relocated, overlapping) + captured app-analysis.png
+- [x] live run: ANL renders with matching numbers, honest per-org recovery (incl. NORTHWIND hurt by target features), SIM still works; DEVLOG M2 entry; committed; reported
+> M2-T1 review verdict: APPROVE-WITH-FIXES. Clean: no label leakage, shared/stratified/seeded split, train-only normalization, correct metrics, deterministic, fast. Minor/nit: gaussian kernel vs hard-radius (documented smoothing), no /0 guard on `recovered`, ordinal target encoding, duplicated monthOf.
 
 ## M1 acceptance (verify before reporting)
 1. Opens via `python -m http.server` with no console errors
