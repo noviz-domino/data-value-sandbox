@@ -4,14 +4,14 @@
     {
       "name": "app",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8779", "--bind", "127.0.0.1", "--directory", "phase2/app"],
-      "port": 8779
+      "runtimeArgs": ["-c", "import os,functools,http.server; p=int(os.environ.get('PORT','8779')); http.server.ThreadingHTTPServer(('127.0.0.1',p), functools.partial(http.server.SimpleHTTPRequestHandler, directory='phase2/app')).serve_forever()"],
+      "autoPort": true
     },
     {
       "name": "prototype",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8778", "--bind", "127.0.0.1", "--directory", "phase2/prototype"],
-      "port": 8778
+      "runtimeArgs": ["-c", "import os,functools,http.server; p=int(os.environ.get('PORT','8778')); http.server.ThreadingHTTPServer(('127.0.0.1',p), functools.partial(http.server.SimpleHTTPRequestHandler, directory='phase2/prototype')).serve_forever()"],
+      "autoPort": true
     }
   ]
 }
