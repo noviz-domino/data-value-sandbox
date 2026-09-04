@@ -85,7 +85,31 @@ The accumulated-events layer is a separate offscreen canvas that is appended to 
 
 ---
 
+## 2026-09-04 — M1 built: deck.gl + Natural Earth, via a delegated pipeline
+
+Replaced the Canvas prototype's hand-drawn map with real deck.gl + self-hosted Natural Earth. Built as a supervised pipeline: I (architect) wrote the module interfaces in [BUILD_PLAN.md](BUILD_PLAN.md) and reviewed/approved; Sonnet subagents wrote the code; a Sonnet reviewer cross-checked the correctness-critical module; I validated live. Committed after every task so an interrupted session could resume from BUILD_PLAN's checklist.
+
+### Why deck.gl + Natural Earth (not a tile basemap)
+
+CARTO now requires an API key for raster tiles and is deprecating them; any keyed/hosted basemap is the same rot risk that killed the Supabase demos. deck.gl (renderer) + Natural Earth GeoJSON (data, committed in-repo) needs no key, no account, no tile server — a plain fetch of static files. deck.gl itself is **vendored locally** (`phase2/app/vendor/deck.gl.min.js`, 1.6 MB) rather than loaded from a CDN, so the app makes zero external network calls at runtime and will still open years from now.
+
+### What the review caught
+
+The correctness-critical logic module (rng/geo/organizations/simulation) got a full adversarial review. Logic, determinism, trig and security were clean, but one real defect: `isLand` had no spatial index, so `simulate()` spent ~3.8 s of synchronous main-thread compute on load — enough to freeze the tab. Fixed with a per-ring bounding-box cull (skip a landmass whose bbox can't contain the point): **3.8 s → 0.3 s, a 12× speedup**, with the self-test producing byte-identical results (the cull is exact — a point outside a bbox can't be inside the ring). The node self-test proves the planted signals independently of the browser: drift 8.30°/6.29°, DRYSTONE winter 34.2%, zero naval events offshore, 2552 events, deterministic.
+
+### Two environment gotchas worth remembering
+
+1. **`requestAnimationFrame` is suspended when the browser pane is hidden.** Probing the app headlessly (JSON dumps, no visible pane) showed the playback frozen at day 0 — which looked like a dead loop but is just rAF not firing in a background tab. It runs fine when actually viewed. The lesson: a JSON probe of an rAF-driven app in a hidden pane can't see playback; force a render (screenshot) or drive state directly.
+2. **Killed dev servers weren't dead.** `TaskStop` left four Python `http.server` processes all bound to port 8778 (Python sets `SO_REUSEADDR`), so requests hit a stale server serving the pre-edit `index.html` — the new `<script>` tag and vendored deck.gl 404'd. Diagnosed via `netstat` (four LISTENING on one port), killed by PID, restarted one clean server. When a served file doesn't match disk, suspect a zombie server before suspecting the code.
+
+### Result
+
+Real geography renders (Southeast Asia, Australia — a clear step up from 22 hand-drawn polygons), three organisations glow at their bases with drifting TIDEBREAK, the timeline/feed/cards/controls all work, encoding is clean (the `<meta charset>` lesson held), and the readout now reads deck zoom instead of the old px/deg. Screenshot: [../screenshots/app-map.png](../screenshots/app-map.png).
+
+Known, deferred to later milestones: playback speed is per-frame not per-time (inherited from the prototype — fine at 60 fps, would drift on a 120 Hz display); org-marker shape-coding (colorblind redundancy) not yet added; the map view is the only view — analysis/organizations/data views, signal sliders, oracle ceiling and density layer are M2–M4.
+
 ## Next
 
-- Reflect the prototype's decisions back into [SPEC.md](SPEC.md) §15, replacing the prose colour description with what was actually built
-- Still unbuilt in the prototype: the analysis, organizations and data views, the signal-strength sliders, and the density heatmap. The prototype covers the map view only, which was enough to settle the visual language
+- M2: analysis view — ablation runs, floor/ceiling, confusion matrices
+- Reflect the built visual language back into [SPEC.md](SPEC.md) §15
+- Consider a time-delta playback loop to make speed frame-rate-independent

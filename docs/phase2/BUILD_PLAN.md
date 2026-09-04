@@ -21,7 +21,7 @@ Everything in SPEC §6–§9 (simulation rules, organizations, data contracts, a
 
 ## Milestones
 
-- **M1 — map & simulation view** ← current. deck.gl + Natural Earth replacement for the prototype: world map, 5-year playback, org markers + radius, drift, reveal toggle, timeline, activity feed. No analysis views.
+- **M1 — map & simulation view** ✅ DONE (2026-09-04). deck.gl + Natural Earth: world map, 5-year playback, org markers + radius, drift, reveal toggle, timeline, activity feed. Runs at `phase2/app/` (dev server: launch.json `app`, port 8779).
 - M2 — analysis view: ablation runs, floor/ceiling, confusion matrices.
 - M3 — organizations view + signal-strength sliders + sweep.
 - M4 — data view + export, guided tour, density layer, seed variance.
@@ -119,7 +119,15 @@ Adapt the prototype's `index.html` + CSS (already designed and validated): statu
 - [ ] shell + timeline match prototype's look; charset meta present; `<meta charset="utf-8">` included
 - [ ] reviewed, committed
 
-### T5 — wiring: main.js + vendor deck.gl + index.html script tag (Sonnet author) [IN PROGRESS]
+### T5 — wiring: main.js + vendor deck.gl + index.html script tag (Sonnet author) [DONE — committed]
+> Vendored deck.gl@9.3.11 locally (1.6MB, zero runtime network). Fixed the readout label (PX/DEG→ZOOM, EQUIRECT→WEB-MERCATOR). Resolved a real periods-shape mismatch between simulation.js (`{org,directive,startDay,endDay}`) and timeline.js (`{o,d,a,b}`) in the wiring layer.
+
+### T6 — architect final review (Opus) [DONE]
+- [x] live run via local server; deck.gl loads, real geography renders, 3 orgs glow, timeline/feed/cards/controls work, no code errors (favicon 404 only)
+- [x] gotcha: rAF suspended in hidden pane (playback looks frozen headlessly — not a bug); zombie servers on :8778 (killed by PID)
+- [x] hero screenshot saved (docs/screenshots/app-map.png)
+- [x] DEVLOG M1 entry; committed
+- [x] M1 reported to user
 State object (SPEC §4), playback loop, control handlers, reveal, org visibility, zoom presets. Loads the three GeoJSON files, builds the land test from ne_110m, runs `simulate`, drives `map.setFrame` + timeline each frame.
 - [ ] full app runs end to end via local server
 - [ ] reviewed, committed
