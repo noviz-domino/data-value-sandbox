@@ -10,8 +10,8 @@ Global Terrorism Database(GTD) 15만여 건으로 만든 **예측 시뮬레이�
 
 | 단계 | 시기 | 결과물 |
 |---|---|---|
-| **1단계 — 수업 실습** | 2026-04 | 노트북 2종, 발표 자료(`videos.mp4`) |
-| **2단계 — 시뮬레이터 재설계** | 2026-09 ~ | 진행 예정 |
+| **1단계 — 수업 실습** | 2026-04 | 노트북 2종, 발표 자료(`presentation.mp4`) |
+| **2단계 — 시뮬레이터 재설계** | 2026-09 ~ | 기획서·명세서, 시각 프로토타입 (진행 중) |
 
 아래 "데이터"부터 "한계"까지는 전부 1단계에 대한 기록입니다. 1단계는 빅데이터 분석 실습이 범위였고, 거기서 끝났습니다. 2단계는 아래 [다음 단계](#다음-단계) 항목을 참고하세요.
 
@@ -64,13 +64,13 @@ Global Terrorism Database(GTD) 15만여 건으로 만든 **예측 시뮬레이�
 
 ## 분석 흐름
 
-**1. 전처리 · 탐색** — [`data_preprocessing.ipynb`](data_preprocessing.ipynb)
+**1. 전처리 · 탐색** — [`data_preprocessing.ipynb`](phase1/data_preprocessing.ipynb)
 
 - 필요한 컬럼만 로드, `describe()`로 분포 확인, 수치형 컬럼 상관관계 히트맵
 - 무기 유형 4종으로 필터링 → 연도별 / 공격유형별 / 무기유형별 집계
 - 정제 결과를 `arms_DF_ver2.csv`로 저장
 
-**2. 모델링** — [`knn.ipynb`](knn.ipynb)
+**2. 모델링** — [`knn.ipynb`](phase1/knn.ipynb)
 
 - 입력: **위도·경도 2개만**. `country`나 `region`을 넣으면 이미 위치가 인코딩된 값으로 점수를 버는 셈이라 일부러 제외했습니다
 - 정답: 무기 유형 4종 (Chemical=0, Explosives=1, Firearms=2, Melee=3)
@@ -125,16 +125,37 @@ KNN을 고른 건 질문 자체가 지리적이기 때문입니다. "주변에�
 
 등장하는 조직과 기관은 **전부 가공**입니다. 실존 단체를 본뜨지 않습니다.
 
+### 진행 상황
+
+| 문서 | 내용 |
+|---|---|
+| [`docs/phase2/PLAN.md`](docs/phase2/PLAN.md) | 왜 이 방향인지, 심어둘 신호 4단계, 평가 설계 |
+| [`docs/phase2/SPEC.md`](docs/phase2/SPEC.md) | 구현 명세서 — 시뮬레이션 알고리즘, 데이터 규약, 화면 구성, 검수 기준 |
+| [`docs/phase2/DEVLOG.md`](docs/phase2/DEVLOG.md) | 작업 기록 |
+| [`phase2/prototype/index.html`](phase2/prototype/index.html) | 시각 언어 프로토타입. 브라우저로 열면 바로 실행됩니다 |
+
+프로토타입은 지도 화면 하나만 구현한 것으로, 실제 시뮬레이터가 아니라 **디자인 방향을 확정하기 위한 것**입니다. 5년치 사건이 재생되고, 지휘부 공개 토글로 숨겨진 명령 구조를 드러낼 수 있습니다.
+
 ---
 
 ## 파일
 
-| 파일 | 단계 | 내용 |
-|---|---|---|
-| [`data_preprocessing.ipynb`](data_preprocessing.ipynb) | 1단계 | 컬럼 선별, 탐색적 분석, 무기 유형 필터링, 정제 데이터 저장 |
-| [`knn.ipynb`](knn.ipynb) | 1단계 | KNN 학습·평가, 예측 예시, 지리적 분포 시각화 |
-| `videos.mp4` | 1단계 | 2026-04 수업 발표용 시연 영상 |
-| [`docs/PLAN.md`](docs/PLAN.md) | 기록 | 프로젝트 기획서 (영문) |
-| [`docs/DEVLOG.md`](docs/DEVLOG.md) | 기록 | 개발일지 (영문) |
+```
+phase1/                     2026-04 수업 실습
+├── data_preprocessing.ipynb    컬럼 선별, 탐색적 분석, 무기 유형 필터링
+├── knn.ipynb                   KNN 학습·평가, 예측 예시, 지리적 분포 시각화
+└── presentation.mp4            수업 발표용 시연 영상
+
+phase2/                     2026-09~ 시뮬레이터 재설계
+└── prototype/index.html        시각 언어 프로토타입 (브라우저에서 바로 실행)
+
+docs/
+├── phase1/PLAN.md              1단계 기획서 (영문)
+├── phase1/DEVLOG.md            1단계 개발일지 (영문)
+├── phase2/PLAN.md              2단계 기획서 (영문)
+├── phase2/SPEC.md              2단계 구현 명세서 (영문)
+├── phase2/DEVLOG.md            2단계 개발일지 (영문)
+└── screenshots/                화면 기록
+```
 
 원본 데이터(`terror/globalterrorism.csv`)는 용량 문제로 저장소에 포함하지 않았습니다. GTD 공식 사이트에서 신청해 받을 수 있습니다.
