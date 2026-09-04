@@ -52,15 +52,17 @@ phase2/app/
 
 ### T0 — architect: this plan + interfaces
 - [x] BUILD_PLAN.md with stack decision, module interfaces, acceptance (this file)
-- [ ] committed
+- [x] committed (8243980)
 
-### T1 — geography data (Sonnet author → reviewer)
-- [ ] fetch `ne_50m_land`, `ne_50m_coastline`, `ne_110m_land` as GeoJSON from `https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/` into `phase2/app/data/`
-- [ ] confirm each file < 20 MB (they are; 50m land is a few MB); report exact sizes
-- [ ] sanity-check: valid GeoJSON, FeatureCollection, non-empty
-- [ ] reviewed, committed
+### T1 — geography data (Sonnet author → light check)
+- [x] fetched ne_50m_land (1.6MB/1420), ne_50m_coastline (1.6MB/1428), ne_110m_land (138KB/127) into `phase2/app/data/`
+- [x] all valid FeatureCollection, 110m is all Polygon
+- [x] committed (data)
 
-### T2 — core logic: rng.js, geo.js, organizations.js, simulation.js (Sonnet author → reviewer)
+### T2 — core logic: rng.js, geo.js, organizations.js, simulation.js (Sonnet author → reviewer) [DONE — committed, perf fix in progress]
+> Review verdict: APPROVE-WITH-FIXES. Logic/determinism/trig/security clean.
+> [MAJOR] isLand no spatial index → simulate() ~3.8s sync freeze on load. FIXED: per-ring bbox cull (ac76ea0), 3.8s→0.3s, self-test identical.
+> Accepted as-is: antimeridian fragility (not exercised, orgs at 100-135°E), isCoastal 8-bearing approximation (SPEC §5.2 permits), monthOf duplicated in simulation.js + _selftest.mjs (nit).
 Port the **validated** logic from `phase2/prototype/index.html` (the `rand`, `dest`, `EV`/`PER` build). Do not redesign the rules. Two required changes from the prototype:
 1. `isLand`/`isCoastal` now test against **ne_110m_land** polygons (real coastlines), not the hand-drawn array. Use point-in-polygon against the coarse land for generation speed; display uses 50m separately.
 2. Split the single inline script into ES modules with the interfaces below.
@@ -91,7 +93,9 @@ export function simulate({ seed, landTest })
 - [ ] determinism + planted-signal check passes (SPEC §17 crit 4/5): base drift 8.2–8.4°, event-mean drift ≥6°, DRYSTONE Dec–Feb 25–35% of other months, zero naval events >30 km offshore, total events 1500–3000
 - [ ] reviewed, committed
 
-### T3 — deck.gl map (Sonnet author → reviewer)
+### T3 — deck.gl map (Sonnet author, live-validated in T6 instead of separate reviewer) [DONE — committed]
+> map.js written & committed. Rendering correctness verified live in T6, not by a read-only reviewer (more effective for visual code, saves tokens).
+> deck.gl is NOT on cdnjs (only an unrelated "deck.js"). Targeted jsDelivr deck.gl@9.3.11 `dist.min.js`. T5 vendors it locally → zero runtime network.
 `map.js` exports a controller that owns a deck.gl instance rendering into a container div.
 ```js
 export function createMap(container, { onHover }) 
@@ -109,12 +113,13 @@ Layers, per SPEC §11.1 intent, translated to deck.gl:
 - [ ] renders, pan/zoom smooth, no console errors
 - [ ] reviewed, committed
 
-### T4 — UI shell + timeline (Sonnet author → reviewer)
+### T4 — UI shell + timeline (Sonnet author → light check) [DONE — committed]
+> Note for T5: the readout still shows `PX/DEG` / `PROJ EQUIRECT` from the Canvas prototype. With deck.gl, update to the deck zoom level and drop the equirect label (or set the real projection name).
 Adapt the prototype's `index.html` + CSS (already designed and validated): status bar, left rail, side org-cards + activity feed, bottom timeline, reveal toggle, transport controls, zoom buttons, boot sequence. Swap the `<canvas id="map">` for the deck.gl container. `timeline.js` keeps the Canvas timeline (bands per org, playhead, directive bands on reveal, with the `CONS/EXPA/SUPP` labels already tuned).
 - [ ] shell + timeline match prototype's look; charset meta present; `<meta charset="utf-8">` included
 - [ ] reviewed, committed
 
-### T5 — wiring: main.js (Sonnet author → reviewer)
+### T5 — wiring: main.js + vendor deck.gl + index.html script tag (Sonnet author) [IN PROGRESS]
 State object (SPEC §4), playback loop, control handlers, reveal, org visibility, zoom presets. Loads the three GeoJSON files, builds the land test from ne_110m, runs `simulate`, drives `map.setFrame` + timeline each frame.
 - [ ] full app runs end to end via local server
 - [ ] reviewed, committed
