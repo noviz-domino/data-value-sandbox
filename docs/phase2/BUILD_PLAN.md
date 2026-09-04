@@ -136,6 +136,39 @@ State object (SPEC §4), playback loop, control handlers, reveal, org visibility
 - [ ] cross-module integ check, acceptance re-run, screenshot via capture-server, prototype-vs-app parity, DEVLOG entry, commit
 - [ ] report M1 to user
 
+## M2 tasks & checklist — analysis view [CURRENT]
+
+The thesis made measurable: which feature set recovers which planted signal, bounded by a floor (majority baseline) and a ceiling (oracle). New files in `phase2/app/js/`. Scope: the classification ablation (runs A/B/C) + bounded accuracy + confusion matrices + per-class metrics, rendered in the ANL view. **Deferred to later:** change-point/directive recovery (SPEC §9.6), seed variance (§9.5), signal sweep (§12.1) — those are M3.
+
+### M2-T1 — analysis engine `analysis.js` (Sonnet author → reviewer) [correctness-critical]
+Interfaces:
+```js
+// KNN from scratch (~30 lines), haversine on the geo pair + min-max-normalized non-geo features.
+export function knnClassify({ train, test, k=5 })   // train/test: [{features:{lat,lon,...}, label}] → predictions[]
+export function confusion(actual, predicted, classes) // → {matrix, perClass:{precision,recall,f1}, accuracy}
+export function majorityBaseline(labels)              // floor: fraction of the most common class
+export function oracleAccuracy(events, {ORGS,DIRECTIVES,periods})  // ceiling, see below
+export function runAblation({events, periods})        // → { A, B, C } each: {features, accuracy, floor, ceiling, recovered, confusion}
+```
+Ablation feature sets (SPEC §9.3), target = `org`, 80/20 split stratified by org, seeded:
+- A: `lat, lon`  → NORTHWIND/DRYSTONE separate, TIDEBREAK poor
+- B: `+ day_index` → TIDEBREAK recall jumps (the headline delta)
+- C: `+ target_type, month` → DRYSTONE gains
+`recovered = (accuracy - floor) / (ceiling - floor)`.
+**Oracle (the piece only synthetic data allows):** for each event compute, for each org, the probability that org's true rules would produce an event at this (lat,lon,day,branch,target): use the org's base position on that day (TIDEBREAK drifts), its effective radius under the directive active in `periods` for that day, branch ranges/shares, seasonal factor, target preference. `argmax` = oracle prediction; its accuracy over the test split = ceiling. Oracle reads the true model — it lives in the scoring path, never a feature.
+- [ ] written; a node self-test asserts: floor ≈ 59% region? (no — org counts are ~equal here, so floor ≈ 33-38%); ceiling strictly between best model accuracy and 100%; run B TIDEBREAK recall exceeds run A by a clear margin; every accuracy in [floor, ceiling]
+- [ ] reviewed, committed
+
+### M2-T2 — analysis view UI + view routing `analysis-view.js` + main.js nav (Sonnet author) [live-validated]
+- Wire the left-rail nav (SIM/ORG/ANL/DAT) to switch views; ANL shows the analysis view, others keep M1/placeholder.
+- Analysis view renders (SPEC §13, design per §15 — saturation only for orgs, IBM Plex, dark slate): (1) bounded-accuracy track per run [floor | achieved | ceiling] with recovered-fraction %; (2) run comparison table (features, floor, accuracy, ceiling, recovered); (3) confusion-matrix heatmaps per run; (4) per-class precision/recall grouped bars. Every accuracy shows floor AND ceiling adjacent — never bare.
+- Charts are Canvas 2D or lightweight SVG, matching the console aesthetic. Round all numbers.
+- [ ] renders, nav switches, numbers match analysis.js
+- [ ] committed
+
+### M2-T3 — architect final review (Opus)
+- [ ] live run, JSON-probe the ablation numbers, screenshot the analysis view, DEVLOG, commit, report
+
 ## M1 acceptance (verify before reporting)
 1. Opens via `python -m http.server` with no console errors
 2. Same seed → identical events (determinism)
