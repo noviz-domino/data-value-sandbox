@@ -1,0 +1,65 @@
+<meta charset="utf-8">
+<title>Ground Truth Console</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+
+<div class="wrap">
+  <div class="statusbar">
+    <div class="id">Ground Truth Console</div>
+    <div class="stat"><b>Seed</b><span>20260903</span></div>
+    <div class="stat"><b>Cells</b><span>3</span></div>
+    <div class="stat"><b>Events</b><span id="s-ev">0000</span></div>
+    <div class="stat"><b>Span</b><span>1826 D</span></div>
+    <div class="live"><span class="dot on" id="s-dot"></span><span id="s-mode">RUNNING</span></div>
+  </div>
+
+  <div class="body">
+    <nav class="rail">
+      <button class="nav sel">SIM</button>
+      <button class="nav">ORG</button>
+      <button class="nav">ANL</button>
+      <button class="nav">DAT</button>
+    </nav>
+
+    <div class="stage">
+      <div id="map"></div>
+      <div class="brk tl"></div><div class="brk tr"></div>
+      <div class="brk bl"></div><div class="brk br"></div>
+      <button class="reveal" id="rv"><span class="sw"></span>Reveal command layer</button>
+      <div class="readout">
+        <div><i>CUR</i> <span id="r-pos">--.--&nbsp;-&nbsp;&nbsp;---.--&nbsp;-</span></div>
+        <div><i>SCL</i> <span id="r-scl">2.5</span> PX/DEG &nbsp;<i>PROJ</i> EQUIRECT</div>
+      </div>
+      <div class="zoom">
+        <button class="zb w" id="z-world">World</button>
+        <button class="zb w" id="z-ao">AO</button>
+        <button class="zb" id="z-out" aria-label="Zoom out">&minus;</button>
+        <button class="zb" id="z-in" aria-label="Zoom in">+</button>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="cells" id="cells"></div>
+      <div class="log">
+        <div class="eyebrow">Activity feed</div>
+        <div class="feed" id="feed"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="tl">
+    <div class="tlhead">
+      <button class="btn on" id="pp">PAUSE</button>
+      <button class="btn" data-sp="1">1&times;</button>
+      <button class="btn on" data-sp="7">7&times;</button>
+      <button class="btn" data-sp="30">30&times;</button>
+      <div class="eyebrow" style="margin-left:6px">Daily activity by cell</div>
+      <div class="dtg" id="dtg">010000Z JAN 26</div>
+    </div>
+    <canvas id="tlc"></canvas>
+  </div>
+
+  <div class="boot" id="boot"></div>
+</div>
+
+<script type="module" src="js/main.js"></script>
