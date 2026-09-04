@@ -15,9 +15,15 @@
 export const ORGS = [
   {
     key: "NORTHWIND",
-    base: [46.0, 103.0], // 몽골 초원 지대, 내륙 — 어느 해안에서도 약 1,500km 떨어져 있음
+    base: [-8.5, 119.0], // 소순다 열도(Lesser Sunda Islands, 롬복/숨바와 일대) 육지 —
+    // 남반구, ne_110m_land 상 실제 폴리곤이 존재하는 섬. DRYSTONE에서 동쪽으로 약 44km —
+    // RANGE.ground=80km 상한 때문에 baseRadius보다 이 거리가 실제 겹침을 좌우한다 (아래 참고).
+    // 주의: 애초 설계안(북호주 Top End)은 이 위도대(±2°)에서 해안선이 동서로 약 5.5도 폭밖에
+    // 안 되어(Gulf of Carpentaria로 대륙이 끊김) TIDEBREAK의 6도 이상 이동 요건(§17 기준5)을
+    // 만족시킬 수 없었다 — ne_110m_land로 직접 확인 후 같은 위도대(-8.5, 원래 프로토타입 값과 동일)의
+    // 더 넓은 섬 지대로 옮겼다. 메커니즘(정지·균등표적·계절성 없음)은 그대로다.
     branches: [{ type: "ground", share: 1 }],
-    baseRadius: 80,
+    baseRadius: 500,
     baseTempo: 0.25,
     driftKmPerDay: 0,
     seasonal: null,
@@ -25,25 +31,30 @@ export const ORGS = [
   },
   {
     key: "TIDEBREAK",
-    base: [-8.5, 116.0], // 섬 지대 서쪽 끝
+    base: [-8.5, 113.5], // 발리(Bali) 부근에서 출발해 동쪽으로 표류(drift) — 롬복/숨바와/플로레스로
+    // 이어지는 섬 지대를 5년에 걸쳐 가로지른다. 위도 -8.5는 프로토타입 원안과 동일한 값으로,
+    // dest()의 동쪽 이동 거리가 위도의 cos(lat)에 반비례해 경도로 환산되는 관계상 planted-signal
+    // 자체 검증(§17)이 요구하는 8.2~8.4도 구간에 이미 잘 맞는다(=8.296도).
     branches: [
       { type: "ground", share: 0.6 },
       { type: "naval", share: 0.4 },
     ],
-    baseRadius: 120,
+    baseRadius: 300,
     baseTempo: 0.3,
-    driftKmPerDay: 0.5, // 월 15km 동쪽 이동 (5년간 약 900km) — SPEC §7.2
+    driftKmPerDay: 0.5, // 하루 0.5km 동쪽 이동 (5년간 약 900km, 경도 약 8.3도) — SPEC §7.2
     seasonal: null,
     targetPreference: null,
   },
   {
     key: "DRYSTONE",
-    base: [-24.0, 133.0], // 건조한 대륙 내부
+    base: [-8.5, 118.6], // NORTHWIND에서 서쪽으로 약 44km. RANGE.ground=80km 상한 때문에
+    // ground 파벌끼리는 이 거리에서만 실제로 겹친다 — baseRadius(500km)는 air 파벌(상한 600km)에만
+    // 그대로 적용되어 훨씬 넓게 퍼지며 NORTHWIND·TIDEBREAK 영역까지 뒤덮는다.
     branches: [
       { type: "ground", share: 0.45 },
       { type: "air", share: 0.55 },
     ],
-    baseRadius: 300,
+    baseRadius: 500,
     baseTempo: 0.35,
     driftKmPerDay: 0,
     seasonal: { months: [12, 1, 2], multiplier: 0.3 }, // 남반구 여름철 활동 억제
