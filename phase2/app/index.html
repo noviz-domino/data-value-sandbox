@@ -3,7 +3,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
 <link rel="stylesheet" href="css/style.css">
 
-<div class="wrap">
+<div class="wrap" data-view="sim">
   <div class="statusbar">
     <div class="id">Ground Truth Console</div>
     <div class="stat"><b>Seed</b><span>20260903</span></div>
@@ -15,10 +15,10 @@
 
   <div class="body">
     <nav class="rail">
-      <button class="nav sel">SIM</button>
-      <button class="nav">ORG</button>
-      <button class="nav">ANL</button>
-      <button class="nav">DAT</button>
+      <button class="nav sel" data-view-btn="sim">SIM</button>
+      <button class="nav" data-view-btn="org">ORG</button>
+      <button class="nav" data-view-btn="anl">ANL</button>
+      <button class="nav" data-view-btn="dat">DAT</button>
     </nav>
 
     <div class="stage">
@@ -45,6 +45,10 @@
         <div class="feed" id="feed"></div>
       </div>
     </aside>
+
+    <div class="viewpane" id="view-anl"></div>
+    <div class="viewpane" id="view-org"><div class="placeholder">Organizations view — M3</div></div>
+    <div class="viewpane" id="view-dat"><div class="placeholder">Data view — M4</div></div>
   </div>
 
   <div class="tl">

@@ -9,6 +9,7 @@ import { ORGS, DIRECTIVES } from "./organizations.js";
 import { simulate } from "./simulation.js";
 import { createMap } from "./map.js";
 import { createTimeline } from "./timeline.js";
+import { createAnalysisView } from "./analysis-view.js";
 
 // ── 조직 팔레트 ────────────────────────────────────────────────────────────
 // map.js 내부의 ORG_COLORS와 정확히 같은 값(프로토타입 실측치). 이 모듈은 map.js의
@@ -296,6 +297,26 @@ function runApp({ events, periods, byDay, days, maxPerDay, landGeo, coastGeo }) 
     b.onclick = () => {
       speed = +b.dataset.sp;
       document.querySelectorAll("[data-sp]").forEach((x) => x.classList.toggle("on", x === b));
+    };
+  });
+
+  // ── 뷰 라우팅(SIM/ORG/ANL/DAT) ───────────────────────────────────────
+  // .wrap[data-view]를 nav 버튼 클릭에 맞춰 바꾸면 style.css의 .wrap:not([data-view="sim"]) 규칙이
+  // stage/side/timeline을 숨기고 해당 .viewpane(#view-anl/#view-org/#view-dat)만 보여준다.
+  // ANL은 처음 진입할 때 한 번만 createAnalysisView().render()를 호출해 runAblation() 결과를 그린다
+  // (analysis-view.js 안에서 result를 캐싱하므로 다시 눌러도 재계산하지 않는다).
+  const wrapEl = document.querySelector(".wrap");
+  const anlView = createAnalysisView(document.getElementById("view-anl"), { events, periods });
+  let anlRendered = false;
+  document.querySelectorAll("[data-view-btn]").forEach((btn) => {
+    btn.onclick = () => {
+      const view = btn.dataset.viewBtn;
+      wrapEl.dataset.view = view;
+      document.querySelectorAll("[data-view-btn]").forEach((b) => b.classList.toggle("sel", b === btn));
+      if (view === "anl" && !anlRendered) {
+        anlRendered = true;
+        anlView.render();
+      }
     };
   });
 
