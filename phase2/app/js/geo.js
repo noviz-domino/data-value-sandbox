@@ -66,16 +66,36 @@ export function makeLandTest(ne110geojson) {
   // 모든 폴리곤의 모든 ring(외곽선 + 구멍)을 하나의 평평한 배열로 모아둔다.
   // ring[0]은 외곽선(exterior), ring[1..]은 구멍(hole)인데, even-odd 규칙으로
   // 모든 ring을 동일하게 취급해 교차할 때마다 안/밖을 뒤집으면 구멍도 자동으로 처리된다.
+  // rings와 나란히, ring마다 [minLon, minLat, maxLon, maxLat] bbox를 미리 계산해 저장해둔다.
+  // isLand 호출마다 매번 모든 edge를 도는 대신, 점이 bbox 밖이면 그 ring은 통째로 건너뛴다
+  // (127개 landmass, ~5143개 vertex를 매 호출마다 순회하는 비용이 성능 병목이었다).
   const rings = [];
+  const ringBboxes = [];
+  function computeBbox(ring) {
+    let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
+    for (const [x, y] of ring) {
+      if (x < minLon) minLon = x;
+      if (x > maxLon) maxLon = x;
+      if (y < minLat) minLat = y;
+      if (y > maxLat) maxLat = y;
+    }
+    return [minLon, minLat, maxLon, maxLat];
+  }
   for (const feature of ne110geojson.features) {
     const geom = feature.geometry;
     if (!geom) continue;
     if (geom.type === "Polygon") {
-      for (const ring of geom.coordinates) rings.push(ring);
+      for (const ring of geom.coordinates) {
+        rings.push(ring);
+        ringBboxes.push(computeBbox(ring));
+      }
     } else if (geom.type === "MultiPolygon") {
       // ne_110m_land는 전부 Polygon이지만, 다른 Natural Earth 데이터셋을 넣어도
       // 깨지지 않도록 MultiPolygon도 방어적으로 지원한다.
-      for (const poly of geom.coordinates) for (const ring of poly) rings.push(ring);
+      for (const poly of geom.coordinates) for (const ring of poly) {
+        rings.push(ring);
+        ringBboxes.push(computeBbox(ring));
+      }
     }
   }
 
@@ -85,7 +105,12 @@ export function makeLandTest(ne110geojson) {
    */
   function isLand(lon, lat) {
     let inside = false;
-    for (const ring of rings) {
+    for (let r = 0; r < rings.length; r++) {
+      const ring = rings[r];
+      const [minLon, minLat, maxLon, maxLat] = ringBboxes[r];
+      // 점이 이 ring의 bbox 밖에 있으면 ring 내부일 수 없으므로(even-odd 결과에 영향 없음)
+      // edge 순회 자체를 건너뛴다 — 순수한 속도 최적화이며 판정 결과는 그대로다.
+      if (lon < minLon || lon > maxLon || lat < minLat || lat > maxLat) continue;
       for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
         const [xi, yi] = ring[i];
         const [xj, yj] = ring[j];
