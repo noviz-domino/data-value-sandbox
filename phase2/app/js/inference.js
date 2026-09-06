@@ -11,6 +11,21 @@
 
 import { haversineKm } from "./geo.js";
 import { mulberry32 } from "./rng.js";
+// 화면에 보이는 두 경고 문구만 i18n으로 옮긴다(SPEC_M4 §1.4 "각 모듈이 자기 문자열을 등록").
+// 이 파일은 그 외에는 순수 함수 원칙을 유지한다 — register()는 문자열 테이블에 항목 두 개를
+// 추가할 뿐, t()를 부르거나 언어를 읽지는 않는다(번역은 이 경고를 실제로 그리는 results-panel.js가 한다).
+import { register } from "./i18n.js";
+
+register({
+  ko: {
+    "inf.tooFewEvents": "범위 안 사건이 적어 추정을 신뢰하기 어려움",
+    "inf.noStandout": "뚜렷한 후보 없음",
+  },
+  en: {
+    "inf.tooFewEvents": "Too few events in scope for a reliable estimate",
+    "inf.noStandout": "No candidate stands out",
+  },
+});
 
 /**
  * 이벤트 배열에서 org(조직 귀속 정답)를 제거한다. 추론 엔진에 이벤트를 넘기기 전, 경계에서
@@ -205,9 +220,11 @@ export function inferTargets({ events, facilities, features }) {
     .map((r, i) => ({ facilityId: r.facilityId, score: r.score, prob: exps[i] / sumExp }))
     .sort((a, b) => b.prob - a.prob);
 
+  // 여기서는 문자열을 직접 넣지 않고 i18n 키만 담는다 — 실제 언어별 문구는 results-panel.js가
+  // t(key)로 골라 그린다. 이 파일은 언어를 모른다(순수 함수 원칙).
   const warnings = [];
-  if (events.length < 25) warnings.push("too few events in scope for a reliable estimate (표본 부족 — 추정 신뢰 어려움)");
-  if (withProb.length === 0 || withProb[0].prob < 0.15) warnings.push("no candidate stands out (뚜렷한 후보 없음)");
+  if (events.length < 25) warnings.push("inf.tooFewEvents");
+  if (withProb.length === 0 || withProb[0].prob < 0.15) warnings.push("inf.noStandout");
 
   return { ranked: withProb, eventCount: events.length, warnings };
 }

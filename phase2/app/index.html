@@ -6,11 +6,15 @@
 <div class="wrap" data-view="sim">
   <div class="statusbar">
     <div class="id">Ground Truth Console</div>
-    <div class="stat"><b>Seed</b><span>20260903</span></div>
-    <div class="stat"><b>Cells</b><span>3</span></div>
-    <div class="stat"><b>Events</b><span id="s-ev">0000</span></div>
-    <div class="stat"><b>Span</b><span>1826 D</span></div>
+    <div class="stat"><b id="lbl-seed">Seed</b><span>20260903</span></div>
+    <div class="stat"><b id="lbl-cells">Cells</b><span>3</span></div>
+    <div class="stat"><b id="lbl-events">Events</b><span id="s-ev">0000</span></div>
+    <div class="stat"><b id="lbl-span">Span</b><span>1826 D</span></div>
     <div class="live"><span class="dot on" id="s-dot"></span><span id="s-mode">RUNNING</span></div>
+    <div class="langtoggle" id="langtoggle">
+      <button class="lang-btn" data-lang="ko" type="button">한국어</button>
+      <button class="lang-btn" data-lang="en" type="button">English</button>
+    </div>
   </div>
 
   <div class="body">
@@ -25,10 +29,10 @@
       <div id="map"></div>
       <div class="brk tl"></div><div class="brk tr"></div>
       <div class="brk bl"></div><div class="brk br"></div>
-      <button class="reveal" id="rv"><span class="sw"></span>Reveal command layer</button>
+      <button class="reveal" id="rv"><span class="sw"></span><span id="rv-label">Reveal command layer</span></button>
       <div class="readout">
-        <div><i>CUR</i> <span id="r-pos">--.--&nbsp;-&nbsp;&nbsp;---.--&nbsp;-</span></div>
-        <div><i>ZOOM</i> <span id="r-scl">1.5</span> &nbsp;<i>PROJ</i> WEB-MERCATOR</div>
+        <div><i id="lbl-cur">CUR</i> <span id="r-pos">--.--&nbsp;-&nbsp;&nbsp;---.--&nbsp;-</span></div>
+        <div><i id="lbl-zoom">ZOOM</i> <span id="r-scl">1.5</span> &nbsp;<i id="lbl-proj">PROJ</i> WEB-MERCATOR</div>
       </div>
       <div class="zoom">
         <button class="zb w" id="z-world">World</button>
@@ -37,7 +41,7 @@
         <button class="zb" id="z-in" aria-label="Zoom in">+</button>
       </div>
       <div class="scopebar">
-        <button class="zb w" id="scope-btn">Set scope (범위 지정)</button>
+        <button class="zb w" id="scope-btn">Set scope</button>
         <label class="scope-radius-label">R <input type="number" id="scope-radius" min="5" max="2000" step="5" value="160"> KM</label>
       </div>
     </div>
@@ -46,14 +50,14 @@
       <div class="cells" id="cells"></div>
       <div class="results" id="results"></div>
       <div class="log">
-        <div class="eyebrow">Activity feed</div>
+        <div class="eyebrow" id="lbl-activity-feed">Activity feed</div>
         <div class="feed" id="feed"></div>
       </div>
     </aside>
 
     <div class="viewpane" id="view-anl"></div>
-    <div class="viewpane" id="view-org"><div class="placeholder">Organizations view — M3</div></div>
-    <div class="viewpane" id="view-dat"><div class="placeholder">Data view — M4</div></div>
+    <div class="viewpane" id="view-org"><div class="placeholder" id="ph-org">Organizations view</div></div>
+    <div class="viewpane" id="view-dat"><div class="placeholder" id="ph-dat">Data view</div></div>
   </div>
 
   <div class="tl">
@@ -62,9 +66,9 @@
       <button class="btn" data-sp="1">1&times;</button>
       <button class="btn on" data-sp="7">7&times;</button>
       <button class="btn" data-sp="30">30&times;</button>
-      <div class="eyebrow" style="margin-left:6px">Time window (기간)</div>
-      <label class="win-input">START <input type="number" id="win-start" min="0"></label>
-      <label class="win-input">END <input type="number" id="win-end" min="0"></label>
+      <div class="eyebrow" id="lbl-timewindow" style="margin-left:6px">Time window</div>
+      <label class="win-input"><span id="lbl-win-start">START</span> <input type="number" id="win-start" min="0"></label>
+      <label class="win-input"><span id="lbl-win-end">END</span> <input type="number" id="win-end" min="0"></label>
       <div class="dtg" id="dtg">010000Z JAN 26</div>
     </div>
     <canvas id="wac"></canvas>

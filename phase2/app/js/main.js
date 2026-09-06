@@ -23,6 +23,98 @@ import { projectForInference, scopeFacilities, inferTargets, evaluateInference }
 // M3-T4부터는 palette.js가 유일한 색상 소스다(map.js/analysis-view.js와 공유). 카드/
 // 타임라인/피드가 지도와 다른 색을 쓰는 어긋남을 palette.js 하나로 없앤다.
 import { ORG_COLORS } from "./palette.js";
+// i18n (SPEC_M4 §1.4): 이 파일이 직접 그리는(index.html 정적 라벨 포함) 문자열은 이 파일이
+// register() 한다. M3까지의 "영어 (한국어 괄호)" gloss는 여기서도 전부 폐기한다(§1.1).
+import { t, getLang, setLang, onLangChange, register } from "./i18n.js";
+
+register({
+  ko: {
+    "app.seed": "시드",
+    "app.cells": "셀",
+    "app.events": "사건",
+    "app.span": "구간",
+    "app.running": "진행 중",
+    "app.hold": "대기",
+    "app.navSim": "시뮬",
+    "app.navOrg": "조직",
+    "app.navAnl": "분석",
+    "app.navDat": "자료",
+    "app.reveal": "지휘 계층 공개",
+    "app.readoutCur": "현재",
+    "app.readoutZoom": "줌",
+    "app.readoutProj": "투영",
+    "app.zoomWorld": "세계",
+    "app.zoomOutAria": "축소",
+    "app.zoomInAria": "확대",
+    "app.setScope": "범위 지정",
+    "app.activityFeed": "활동 피드",
+    "app.pause": "일시정지",
+    "app.play": "재생",
+    "app.timeWindow": "기간",
+    "app.winStart": "시작",
+    "app.winEnd": "종료",
+    "app.orgPlaceholder": "조직 뷰 — 준비 중",
+    "app.datPlaceholder": "데이터 뷰 — 준비 중",
+    "app.cellEv": "사건",
+    "app.cellRad": "반경",
+    "app.daysLeft": "{days}일 남음",
+    "app.bootTerrain": "지형 마스크",
+    "app.bootLoaded": "로드됨",
+    "app.bootSeed": "PRNG 시드 {seed}",
+    "app.bootLocked": "고정됨",
+    "app.bootHierarchy": "행위자 계층 / 셀 {n}개",
+    "app.bootReady": "준비됨",
+    "app.bootSpan": "시뮬레이션 구간 / {days}일",
+    "app.bootBuilt": "생성됨",
+    "app.bootInference": "표적 추론 / 후보 {n}개",
+    "app.bootCommand": "지휘 계층",
+    "app.bootWithheld": "비공개",
+  },
+  en: {
+    "app.seed": "Seed",
+    "app.cells": "Cells",
+    "app.events": "Events",
+    "app.span": "Span",
+    "app.running": "RUNNING",
+    "app.hold": "HOLD",
+    "app.navSim": "SIM",
+    "app.navOrg": "ORG",
+    "app.navAnl": "ANL",
+    "app.navDat": "DAT",
+    "app.reveal": "Reveal command layer",
+    "app.readoutCur": "CUR",
+    "app.readoutZoom": "ZOOM",
+    "app.readoutProj": "PROJ",
+    "app.zoomWorld": "World",
+    "app.zoomOutAria": "Zoom out",
+    "app.zoomInAria": "Zoom in",
+    "app.setScope": "Set scope",
+    "app.activityFeed": "Activity feed",
+    "app.pause": "PAUSE",
+    "app.play": "PLAY",
+    "app.timeWindow": "Time window",
+    "app.winStart": "START",
+    "app.winEnd": "END",
+    "app.orgPlaceholder": "Organizations view — coming soon",
+    "app.datPlaceholder": "Data view — coming soon",
+    "app.cellEv": "EV",
+    "app.cellRad": "RAD",
+    "app.daysLeft": "{days}D LEFT",
+    "app.bootTerrain": "TERRAIN MASK",
+    "app.bootLoaded": "LOADED",
+    "app.bootSeed": "PRNG SEED {seed}",
+    "app.bootLocked": "LOCKED",
+    "app.bootHierarchy": "AGENT HIERARCHY / {n} CELLS",
+    "app.bootReady": "READY",
+    "app.bootSpan": "SIMULATION SPAN / {days} DAYS",
+    "app.bootBuilt": "BUILT",
+    "app.bootInference": "TARGET INFERENCE / {n} CANDIDATES",
+    "app.bootCommand": "COMMAND LAYER",
+    "app.bootWithheld": "WITHHELD",
+  },
+});
+// "AO"(Area of Operations)와 부트 타이틀("GROUND TRUTH CONSOLE"/"v0.9.1")은 두 언어에서 동일한
+// 값이라 사전에 넣지 않고 그대로 하드코딩한다 — 군사 약어/제품명은 번역해도 똑같기 때문이다.
 
 const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const D0 = Date.UTC(2026, 0, 1);
@@ -104,6 +196,12 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   const rvEl = document.getElementById("rv");
   const scopeBtnEl = document.getElementById("scope-btn");
   const scopeRadiusEl = document.getElementById("scope-radius");
+  // ── i18n 대상 정적 라벨 DOM 참조 (M4-T1) ────────────────────────────────
+  const rvLabelEl = document.getElementById("rv-label");
+  const langToggleEl = document.getElementById("langtoggle");
+  const zOutEl = document.getElementById("z-out");
+  const zInEl = document.getElementById("z-in");
+  const zWorldEl = document.getElementById("z-world");
 
   // ── 데이터 접근 seam (SPEC_M3 §6.2) ───────────────────────────────────
   // 이 앱의 모든 뷰는 이제부터 events 배열을 직접 filter/index하지 않고 queryEvents()만 부른다.
@@ -125,6 +223,55 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   let speed = 7;
   let reveal = false;
   const visibleOrgs = new Set(ORGS.map((o) => o.key)); // 전부 보이는 상태로 시작
+
+  // ── i18n: 언어와 무관하게 매 프레임 chrome()이 다시 그리는 값(EV/RAD 숫자, DTG, 카드 dir
+  // 배지 등)은 그 안에서 t()를 그대로 부르면 다음 rAF에 자동으로 갱신된다. 여기서는 chrome()이
+  // 건드리지 않는 "정적" 라벨만 모아 한 번에 다시 적용한다. 시뮬레이션 상태·시간창·스코프·
+  // 선택은 이 함수가 절대 건드리지 않는다 — 텍스트만 바꾼다(SPEC_M4 §1.5).
+  function applyI18n() {
+    document.getElementById("lbl-seed").textContent = t("app.seed");
+    document.getElementById("lbl-cells").textContent = t("app.cells");
+    document.getElementById("lbl-events").textContent = t("app.events");
+    document.getElementById("lbl-span").textContent = t("app.span");
+    sModeEl.textContent = playing ? t("app.running") : t("app.hold");
+
+    document.querySelectorAll("[data-view-btn]").forEach((btn) => {
+      const key = { sim: "app.navSim", org: "app.navOrg", anl: "app.navAnl", dat: "app.navDat" }[btn.dataset.viewBtn];
+      if (key) btn.textContent = t(key);
+    });
+
+    rvLabelEl.textContent = t("app.reveal");
+    document.getElementById("lbl-cur").textContent = t("app.readoutCur");
+    document.getElementById("lbl-zoom").textContent = t("app.readoutZoom");
+    document.getElementById("lbl-proj").textContent = t("app.readoutProj");
+    zWorldEl.textContent = t("app.zoomWorld");
+    // "AO"(Area of Operations)는 두 언어에서 동일해 건드리지 않는다.
+    zOutEl.setAttribute("aria-label", t("app.zoomOutAria"));
+    zInEl.setAttribute("aria-label", t("app.zoomInAria"));
+    scopeBtnEl.textContent = t("app.setScope");
+
+    document.getElementById("lbl-activity-feed").textContent = t("app.activityFeed");
+    ppEl.textContent = playing ? t("app.pause") : t("app.play");
+    document.getElementById("lbl-timewindow").textContent = t("app.timeWindow");
+    document.getElementById("lbl-win-start").textContent = t("app.winStart");
+    document.getElementById("lbl-win-end").textContent = t("app.winEnd");
+
+    document.getElementById("ph-org").textContent = t("app.orgPlaceholder");
+    document.getElementById("ph-dat").textContent = t("app.datPlaceholder");
+
+    // 조직 카드(#cells)의 EV/RAD 라벨 — 값(data-ev/data-rad)은 chrome()이 매 프레임 채우지만
+    // 라벨 자체는 카드를 만들 때 한 번만 쓰인 정적 텍스트라 여기서 다시 적용해야 한다.
+    cellsEl.querySelectorAll(".cell").forEach((cellEl) => {
+      const rows = cellEl.querySelectorAll(".rows i");
+      if (rows[0]) rows[0].textContent = t("app.cellEv");
+      if (rows[1]) rows[1].textContent = t("app.cellRad");
+    });
+
+    // 언어 토글 자체의 활성 표시(리드 악센트) — 라벨(한국어/English)은 항상 고정이다(SPEC_M4 §1.6).
+    langToggleEl.querySelectorAll(".lang-btn").forEach((b) => {
+      b.classList.toggle("on", b.dataset.lang === getLang());
+    });
+  }
 
   // ── 스코프(scope) 선택 상태 (SPEC_M3 §6.3) ────────────────────────────
   // 기본 스코프: NORTHWIND 거점 부근(여러 시설이 몰려 있는 지대), 반경 160km. 사용자가 드래그로
@@ -393,7 +540,9 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
       el.querySelector("[data-rad]").textContent = pad(Math.round(org.baseRadius * dirDef.radiusMult), 3);
       const dd = el.querySelector("[data-dir]");
       dd.hidden = !reveal;
-      if (reveal && p) dd.textContent = p.directive + " · " + pad(p.endDay - day, 3) + "D LEFT";
+      // directive 이름(p.directive, 예: EXPAND)은 데이터셋 값이라 언어와 무관하게 원문 그대로 둔다
+      // (SPEC_M4 §1.2) — "{days}일 남음"/"{days}D LEFT" 부분만 t()로 번역한다.
+      if (reveal && p) dd.textContent = p.directive + " · " + t("app.daysLeft", { days: pad(p.endDay - day, 3) });
     });
 
     // 피드: 시간창 안 이벤트 중 최신 11개(day 내림차순)를 보여준다. 이벤트 수가 수천 개라도
@@ -496,10 +645,10 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
 
   ppEl.onclick = (e) => {
     playing = !playing;
-    e.currentTarget.textContent = playing ? "PAUSE" : "PLAY";
+    e.currentTarget.textContent = playing ? t("app.pause") : t("app.play");
     e.currentTarget.classList.toggle("on", playing);
     sDotEl.classList.toggle("on", playing);
-    sModeEl.textContent = playing ? "RUNNING" : "HOLD";
+    sModeEl.textContent = playing ? t("app.running") : t("app.hold");
   };
 
   document.querySelectorAll("[data-sp]").forEach((b) => {
@@ -530,14 +679,17 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   });
 
   // ── 부트 시퀀스 ──────────────────────────────────────────────────────
+  // "GROUND TRUTH CONSOLE"/"v0.9.1"은 제품명·버전이라 두 언어에서 동일해 t() 없이 그대로 둔다.
+  // 나머지 라벨은 t()로 고른다 — 부트 오버레이는 2초 안에 사라지므로 언어 전환에 맞춰 다시
+  // 그릴 필요가 없다(전환 시점엔 이미 화면에서 걷힌 뒤).
   const BOOT = [
     ["GROUND TRUTH CONSOLE", "v0.9.1"],
-    ["TERRAIN MASK", "LOADED"],
-    ["PRNG SEED " + SEED, "LOCKED"],
-    ["AGENT HIERARCHY / 3 CELLS", "READY"],
-    ["SIMULATION SPAN / " + days + " DAYS", "BUILT"],
-    ["TARGET INFERENCE / " + facilities.length + " CANDIDATES", "BUILT"],
-    ["COMMAND LAYER", "WITHHELD"],
+    [t("app.bootTerrain"), t("app.bootLoaded")],
+    [t("app.bootSeed", { seed: SEED }), t("app.bootLocked")],
+    [t("app.bootHierarchy", { n: ORGS.length }), t("app.bootReady")],
+    [t("app.bootSpan", { days }), t("app.bootBuilt")],
+    [t("app.bootInference", { n: facilities.length }), t("app.bootBuilt")],
+    [t("app.bootCommand"), t("app.bootWithheld")],
   ];
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -546,10 +698,22 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
 
   // index.html의 정적 마크업은 "재생 중"을 기본값으로 박아뒀지만(과거 M1 동작), M3-T3부터는
   // playing=false가 기본이므로(위 상태 선언) 버튼/상태 표시를 실제 상태와 맞춰준다.
-  ppEl.textContent = playing ? "PAUSE" : "PLAY";
+  ppEl.textContent = playing ? t("app.pause") : t("app.play");
   ppEl.classList.toggle("on", playing);
   sDotEl.classList.toggle("on", playing);
-  sModeEl.textContent = playing ? "RUNNING" : "HOLD";
+  sModeEl.textContent = playing ? t("app.running") : t("app.hold");
+
+  // ── 언어 토글(KO/EN) 배선 (SPEC_M4 §1.6) ──────────────────────────────
+  // 버튼 자체의 레이블("한국어"/"English")은 항상 고정이라 t()를 거치지 않는다 — 그래야 어느
+  // 언어 상태에서도 둘 다 읽힌다(§1.6). setLang()은 상태를 그대로 두고 표시만 바꾸므로(§1.5)
+  // 여기서도 recomputeInference나 setWindow를 다시 부르지 않는다.
+  langToggleEl.querySelectorAll(".lang-btn").forEach((b) => {
+    b.onclick = () => setLang(b.dataset.lang);
+  });
+  // 모든 뷰가 구독하는 공통 규칙: 언어가 바뀌면 이 파일이 소유한 정적 라벨만 다시 적용한다.
+  // results-panel.js/analysis-view.js는 각자 자기 onLangChange 구독으로 스스로 다시 그린다.
+  onLangChange(applyI18n);
+  applyI18n(); // 부팅 시 최초 1회 — 기본 언어(브라우저 설정 또는 저장된 선택)를 바로 반영한다.
 
   if (reduceMotion) {
     bootEl.classList.add("done");

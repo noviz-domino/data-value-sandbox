@@ -10,7 +10,65 @@ import { runAblation } from "./analysis.js";
 // map.js/main.js와 같은 palette.js를 쓴다(M3-T4) — 조직 색이 지도·카드·이 뷰에서
 // 서로 어긋나지 않도록 한 곳에서만 정의한다.
 import { ORG_COLORS } from "./palette.js";
+// i18n (SPEC_M4 §1.4): 이 뷰가 그리는 문자열은 이 파일이 직접 register() 한다.
+import { t, register, onLangChange } from "./i18n.js";
+
+register({
+  ko: {
+    "anl.recoveryTitle": "조직별 recall 회복 (A → B → C)",
+    "anl.boundedTitle": "경계 지어진 정확도 — 무작위 기준선 · 달성값 · 상한",
+    "anl.tableTitle": "실행 비교",
+    "anl.cmTitle": "오차 행렬",
+    "anl.cmRunLabel": "실행 {run}",
+    "anl.cmSubtitle": "실제(행) vs 예측(열)",
+    "anl.trackFloor": "기준선 {v}",
+    "anl.trackAcc": "정확도 {v}",
+    "anl.trackCeil": "상한 {v}",
+    "anl.trackRecovered": "회복률 {v}%",
+    "anl.recallDeltaLabel": "{label} recall",
+    "anl.tableHeadRun": "실행",
+    "anl.tableHeadFeatures": "특징",
+    "anl.tableHeadFloor": "기준선",
+    "anl.tableHeadAccuracy": "정확도",
+    "anl.tableHeadCeiling": "상한",
+    "anl.tableHeadRecovered": "회복률",
+    "anl.caption":
+      "day-of-year(연중 날짜)를 추가하면 TIDEBREAK의 이동하는 셀이 회복됩니다(recall {tbA}% → {tbB}%). " +
+      "target 유형과 month를 추가하면 DRYSTONE의 계절성 셀이 회복됩니다(recall {dsB}% → {dsC}%). " +
+      "전체 accuracy는 거의 움직이지 않는데({accA}% → {accC}%), 어떤 feature 조합도 oracle 상한({ceiling}%)에 " +
+      "도달하지 못하기 때문입니다 — 나머지는 조직들의 활동 구역이 겹치는, 줄일 수 없는 부분입니다.",
+  },
+  en: {
+    "anl.recoveryTitle": "Per-organisation recall recovery (A → B → C)",
+    "anl.boundedTitle": "Bounded accuracy — floor · achieved · ceiling",
+    "anl.tableTitle": "Run comparison",
+    "anl.cmTitle": "Confusion matrices",
+    "anl.cmRunLabel": "Run {run}",
+    "anl.cmSubtitle": "actual (rows) vs predicted (cols)",
+    "anl.trackFloor": "floor {v}",
+    "anl.trackAcc": "acc {v}",
+    "anl.trackCeil": "ceiling {v}",
+    "anl.trackRecovered": "recovered {v}%",
+    "anl.recallDeltaLabel": "recall {label}",
+    "anl.tableHeadRun": "Run",
+    "anl.tableHeadFeatures": "Features",
+    "anl.tableHeadFloor": "Floor",
+    "anl.tableHeadAccuracy": "Accuracy",
+    "anl.tableHeadCeiling": "Ceiling",
+    "anl.tableHeadRecovered": "Recovered",
+    "anl.caption":
+      "Adding day-of-year recovers TIDEBREAK's drifting cell (recall {tbA}% → {tbB}%); adding target type and " +
+      "month recovers DRYSTONE's seasonal cell (recall {dsB}% → {dsC}%). Overall accuracy barely moves " +
+      "({accA}% → {accC}%) because no feature set reaches the oracle ceiling ({ceiling}%) — the rest is " +
+      "irreducible overlap between organisations' operating areas.",
+  },
+});
+
 const RUN_KEYS = ["A", "B", "C"];
+// 각 run이 실제로 어떤 필드(스키마 컬럼명)를 쓰는지 나열한 목록이다 — lat/lon/day/target/month는
+// events.csv 컬럼 "내용"이 아니라 "이름"이라 dataset value는 아니지만, 그렇다고 자연어 단어도
+// 아니라서 번역하지 않는다(SPEC_M4 §1.2 "column headers translate; contents do not"의 취지를
+// 그대로 따르되, 여기 A/B/C 라벨은 헤더 자체가 아니라 헤더 이름들을 나열한 것이라 원문 유지).
 const RUN_LABELS = {
   A: "A · lat, lon",
   B: "B · lat, lon, day",
@@ -66,8 +124,8 @@ function renderRecoveryPanel(result) {
             '" class="anl-axis"></line>' +
           bars +
         "</svg>" +
-        '<div class="anl-org-delta">recall ' + bestLabel + " <b style=\"color:" + color + '">' + sign +
-          Math.abs(bestDelta * 100).toFixed(1) + "pp</b></div>" +
+        '<div class="anl-org-delta">' + t("anl.recallDeltaLabel", { label: bestLabel }) +
+          ' <b style="color:' + color + '">' + sign + Math.abs(bestDelta * 100).toFixed(1) + "pp</b></div>" +
       "</div>"
     );
   }).join("");
@@ -93,10 +151,10 @@ function renderBoundedTrack(run, key) {
         '<circle cx="' + accX + '" cy="11" r="3.2" class="anl-track-dot"></circle>' +
       "</svg>" +
       '<div class="anl-track-nums">' +
-        '<span class="anl-num-floor">floor ' + pct1(run.floor) + "</span>" +
-        '<span class="anl-num-acc">acc ' + pct1(run.accuracy) + "</span>" +
-        '<span class="anl-num-ceil">ceiling ' + pct1(run.ceiling) + "</span>" +
-        '<span class="anl-num-rec">recovered ' + pct1(run.recovered) + "%</span>" +
+        '<span class="anl-num-floor">' + t("anl.trackFloor", { v: pct1(run.floor) }) + "</span>" +
+        '<span class="anl-num-acc">' + t("anl.trackAcc", { v: pct1(run.accuracy) }) + "</span>" +
+        '<span class="anl-num-ceil">' + t("anl.trackCeil", { v: pct1(run.ceiling) }) + "</span>" +
+        '<span class="anl-num-rec">' + t("anl.trackRecovered", { v: pct1(run.recovered) }) + "</span>" +
       "</div>" +
     "</div>"
   );
@@ -118,8 +176,10 @@ function renderTable(result) {
   }).join("");
   return (
     '<table class="anl-table"><thead><tr>' +
-      "<th>Run</th><th>Features</th><th>Floor</th><th>Accuracy</th><th>Ceiling</th>" +
-      '<th class="anl-recovered-cell">Recovered</th>' +
+      "<th>" + t("anl.tableHeadRun") + "</th><th>" + t("anl.tableHeadFeatures") + "</th><th>" +
+      t("anl.tableHeadFloor") + "</th><th>" + t("anl.tableHeadAccuracy") + "</th><th>" +
+      t("anl.tableHeadCeiling") + "</th>" +
+      '<th class="anl-recovered-cell">' + t("anl.tableHeadRecovered") + "</th>" +
     "</tr></thead><tbody>" + rows + "</tbody></table>"
   );
 }
@@ -148,7 +208,8 @@ function renderConfusionPanelSafe(result) {
     });
     return (
       '<div class="anl-cm">' +
-        '<div class="anl-cm-title">Run ' + k + '<span> · actual (rows) vs predicted (cols)</span></div>' +
+        '<div class="anl-cm-title">' + esc(t("anl.cmRunLabel", { run: k })) +
+          '<span> · ' + esc(t("anl.cmSubtitle")) + "</span></div>" +
         '<div class="anl-cm-grid" style="grid-template-columns:44px repeat(' + classes.length + ", 1fr)\">" +
           gridCells +
         "</div>" +
@@ -159,6 +220,8 @@ function renderConfusionPanelSafe(result) {
 
 // ── caption: 실제 숫자로부터 생성되는 한 줄 설명 ─────────────────────────────────────────
 function renderCaption(result) {
+  // TIDEBREAK/DRYSTONE은 조직명(dataset value)이라 언어와 무관하게 원문 그대로 두고, "anl.caption"
+  // 번역 문자열 안에도 그대로 하드코딩되어 있다(SPEC_M4 §1.2).
   const tbA = result.A.confusion.perClass.TIDEBREAK.recall;
   const tbB = result.B.confusion.perClass.TIDEBREAK.recall;
   const dsB = result.B.confusion.perClass.DRYSTONE.recall;
@@ -166,13 +229,10 @@ function renderCaption(result) {
   const accA = result.A.accuracy;
   const accC = result.C.accuracy;
   const ceiling = result.A.ceiling;
-  return (
-    "Adding day-of-year recovers TIDEBREAK’s drifting cell (recall " + pct1(tbA) + "% → " + pct1(tbB) +
-    "%); adding target type and month recovers DRYSTONE’s seasonal cell (recall " + pct1(dsB) + "% → " +
-    pct1(dsC) + "%). Overall accuracy barely moves (" + pct1(accA) + "% → " + pct1(accC) +
-    "%) because no feature set reaches the oracle ceiling (" + pct1(ceiling) +
-    "%) — the rest is irreducible overlap between organisations’ operating areas."
-  );
+  return t("anl.caption", {
+    tbA: pct1(tbA), tbB: pct1(tbB), dsB: pct1(dsB), dsC: pct1(dsC),
+    accA: pct1(accA), accC: pct1(accC), ceiling: pct1(ceiling),
+  });
 }
 
 /**
@@ -190,24 +250,29 @@ export function createAnalysisView(container, { events, periods }) {
     container.innerHTML =
       '<div class="anl">' +
         '<section class="anl-panel">' +
-          '<div class="eyebrow">Per-organisation recall recovery (A → B → C)</div>' +
+          '<div class="eyebrow">' + t("anl.recoveryTitle") + "</div>" +
           renderRecoveryPanel(result) +
-          '<div class="anl-caption">' + renderCaption(result) + "</div>" +
+          '<div class="anl-caption">' + esc(renderCaption(result)) + "</div>" +
         "</section>" +
         '<section class="anl-panel">' +
-          '<div class="eyebrow">Bounded accuracy — floor · achieved · ceiling</div>' +
+          '<div class="eyebrow">' + t("anl.boundedTitle") + "</div>" +
           renderBoundedPanel(result) +
         "</section>" +
         '<section class="anl-panel">' +
-          '<div class="eyebrow">Run comparison</div>' +
+          '<div class="eyebrow">' + t("anl.tableTitle") + "</div>" +
           renderTable(result) +
         "</section>" +
         '<section class="anl-panel">' +
-          '<div class="eyebrow">Confusion matrices</div>' +
+          '<div class="eyebrow">' + t("anl.cmTitle") + "</div>" +
           '<div class="anl-cm-row">' + renderConfusionPanelSafe(result) + "</div>" +
         "</section>" +
       "</div>";
   }
+
+  // 언어가 바뀌면 캐싱해둔 result로 다시 그리기만 한다 — runAblation()을 다시 부르지 않는다(§1.5).
+  onLangChange(() => {
+    if (result) render();
+  });
 
   return { render };
 }
