@@ -109,6 +109,9 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
 .res-fa-sub{display:block;margin-top:3px;color:var(--ink-mute);font-size:10px;line-height:1.4;}
 .res-fa{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-dim);margin-bottom:8px}
 .res-fa b{color:var(--ink)}
+/* reveal이 켜졌지만 이 스코프·시간창에 캠페인이 없을 때 — .res-truth와 같은 악센트 톤(--tb)으로
+   "정답 없음"도 정보임을 시각적으로 이어준다. */
+.res-answer-empty{font-family:var(--f-mono);font-size:10.5px;color:var(--tb);margin-bottom:8px}
 .res-list{display:flex;flex-direction:column;gap:8px}
 .res-empty{color:var(--ink-mute);font-family:var(--f-cond);font-size:11px;padding:10px 0}
 .res-row{border:1px solid var(--hair);background:var(--riser);padding:7px 9px;cursor:pointer}

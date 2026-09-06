@@ -192,6 +192,8 @@ PEC  + convergence   51.5% [38.9-64.8]   13.5%   3.81x   14.5%
 
 Pooled over 5 seeds, 270 campaigns, ~9.2 candidates per scope. Detection is the density-matched figure; unmatched it reads 17.0%, and the gap is what event volume alone was buying.
 
+Running: [../screenshots/app-target-inference.png](../screenshots/app-target-inference.png) — the method ranks PWR-021 first at 78.6%, and the answer key (revealed) confirms it is the true target.
+
 **Ranking works and the ladder is real.** Convergence — events closing in on the target as the campaign progresses — is the signal that does the work, and it is invisible without dates. That is the project's thesis, measured: *this* is the data you must collect.
 
 Two honest caveats stay in the headline. **Encirclement does not work here** (−1.85pp, slightly negative); bearing spread is not a usable signal in an archipelago, and a null result reported is worth more than a null result tuned away. And **detection is modest**: the method usually names the right facility first, but telling "a campaign is happening here" from "this is a busy neighbourhood" is much harder than ranking within a scope. For **41% of campaigns no campaign-free region on the map is ever as busy** — for those, volume alone is already a crude discriminator.

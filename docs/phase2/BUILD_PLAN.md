@@ -23,7 +23,7 @@ Everything in SPEC §6–§9 (simulation rules, organizations, data contracts, a
 
 - **M1 — map & simulation view** ✅ DONE (2026-09-04). deck.gl + Natural Earth: world map, 5-year playback, org markers + radius, drift, reveal toggle, timeline, activity feed. Runs at `phase2/app/` (dev server: launch.json `app`, port 8779).
 - M2 — analysis view: ablation runs, floor/ceiling, confusion matrices. ✅ DONE (2026-09-04). Ladder: floor 38.8% → A 64.7% → B TIDEBREAK recall +14.9pp → C DRYSTONE recall +16.1pp, oracle ceiling 86.6% (true bound after wiring branch share). Orgs relocated to Lesser Sunda chain for overlap.
-- M3 — **target inference** (redefined 2026-09-06, supersedes "organizations view + signal-strength sliders"). Infer which facility a scattered set of incidents is preparing against, with 80% background noise. See [SPEC_M3.md](SPEC_M3.md).
+- **M3 — target inference** ✅ DONE (2026-09-06). Infer which facility scattered incidents are preparing against, against 80% background noise. Top-1 39.3% → 51.5% (scope floor 13.5%, 3.81x lift); detection@10%FAR 5.0% → 14.5% density-matched. Encirclement is a reported null (−1.85pp). See [SPEC_M3.md](SPEC_M3.md).
 - M4 — data view + export, guided tour, density layer, seed variance.
 
 ### Why M3 was redefined
@@ -31,7 +31,7 @@ Everything in SPEC §6–§9 (simulation rules, organizations, data contracts, a
 The original M3 (signal-strength sliders) had no clear consumer. The project's identity settled as a **methodology instrument for intelligence-style analysis**: not "predict terrorism" but "what must you collect before prediction is possible, and where does the method break". Target inference is that question in its sharpest form — and the noise ratio slider survives inside it with a real job (at what noise level does inference fail).
 
 Design decisions locked with the user before writing SPEC_M3:
-- Candidate targets are **real facility locations** (OSM/ODbL, 160 in the AO) with **names withheld** — realistic placement without producing a target list for real infrastructure.
+- Candidate targets are **real facility locations** (OSM/ODbL; 160 fetched, restricted to the **69** the generator's terrain model also resolves as land) with **names withheld** — realistic placement without producing a target list for real infrastructure.
 - **80% of events are unrelated noise**, and noise clusters near facilities too (otherwise "activity near a facility" trivially means "target").
 - Multiple organisations run **simultaneous campaigns against different targets**, so grouping events is a genuine problem.
 - Production datasets (real GTD/ACLED) are **out of scope**; M3 builds structure at test scale.
@@ -241,8 +241,11 @@ Spec: [SPEC_M3.md](SPEC_M3.md). Ground-truth separation (§3) applies to every t
 - [x] `palette.js` + `:root` custom properties; all literals centralised out of map/main/timeline/analysis-view
 - [x] measured contrast: body 12.7:1 (void) / 11.8:1 (panel), dim 7.1:1, accent 9.8:1, border 3.7:1 — all pass
 
-### M3-T5 — architect final review (Opus)
-- [ ] live run, screenshots, DEVLOG entry, commit, report at milestone boundary
+### M3-T5 — architect final review (Opus) [DONE]
+- [x] reviewer verdict APPROVE (no ground-truth leak on any path into `inferTargets`; spec/code match; determinism holds)
+- [x] both self-tests pass; M2 numbers byte-identical
+- [x] live run + screenshot ([../screenshots/app-target-inference.png](../screenshots/app-target-inference.png)) — answer key absent from the DOM with reveal off, badge on the true target with reveal on
+- [x] DEVLOG entry, README updated, committed
 
 ## Resume notes (M3)
 

@@ -109,6 +109,8 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   // 이 앱의 모든 뷰는 이제부터 events 배열을 직접 filter/index하지 않고 queryEvents()만 부른다.
   const { queryEvents } = createEventQuery(events);
   const facilitiesById = new Map(facilities.map((f) => [f.id, f]));
+  // 답 배지(§answer-key 블록) 전용 색인 — campaign.eventIds로 좌표를 다시 찾아 centroid를 낼 때만 쓴다.
+  const eventsById = new Map(events.map((e) => [e.id, e]));
 
   // ── 시간창(time window) 상태 (SPEC_M3 §6.1) ───────────────────────────
   // 기본값: 전체 구간(days)의 "가장 최근 100일". 실 스트리밍 소스는 처음부터 끝까지 다 아는
@@ -137,15 +139,22 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   // 1회만 계산해 캐싱한다. evaluateInference는 5개 시드를 스스로 파생해 다시 simulate()를 돌리므로
   // (inference.js는 손대지 않고, simulateFn만 넘긴다) 약간의 시간이 걸릴 수 있어 부팅 이후 한 박자
   // 늦게(setTimeout) 계산하고, 끝나면 결과 패널을 다시 그린다.
-  let cachedEval = null; // { operatingFalseAlarmRate, detectionAt10FAR }
+  let cachedEval = null; // { operatingFalseAlarmRate, detection, detectionUnmatched, unmatchedShare }
   function runCachedEvaluation() {
     try {
       const evalResult = evaluateInference({ simulateFn, seed: SEED });
+      const pec = evalResult.runs.PEC;
       cachedEval = {
         // §5.3 재작성판: 문턱 자체가 "통제 구간 오경보율 10%"가 되도록 잡히므로, 오경보율은
         // 측정치가 아니라 상수(FALSE_ALARM_TARGET_RATE=0.1)다 — 그 문턱에서의 탐지율이 실제 측정치.
         operatingFalseAlarmRate: 0.1,
-        detectionAt10FAR: evalResult.runs.PEC.detectionAt10FAR,
+        // 대표값은 반드시 밀도를 맞춘 쪽(§5.3 "Density-match the controls")이다. 맞추지 않은
+        // 수치는 캠페인 창이 그냥 더 붐벼서 이긴 몫을 포함하므로 방법을 과대평가한다
+        // (측정: 17.0% -> 14.5%). 과대평가 값을 대표로 걸면 이 프로젝트가 고치려는 바로 그
+        // 실수 - 기준선 없는 성능 숫자 - 를 UI에서 되풀이하게 된다.
+        detection: pec.detectionAt10FARMatched,
+        detectionUnmatched: pec.detectionAt10FAR,
+        unmatchedShare: pec.unmatchedCampaignShare,
       };
       recomputeInference();
     } catch (err) {
@@ -160,6 +169,33 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
       recomputeInference();
     },
   });
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // 정답지(scoring-only) 블록 — SPEC_M3 §3 ground truth separation, 절대 규칙.
+  // 이 함수는 오직 결과 패널의 "ANSWER KEY" 배지(§6.4, reveal 토글 전용)를 그리기 위해서만
+  // campaigns를 읽는다. 반환값은 recomputeInference() 맨 끝에서 resultsPanel.render()로만
+  // 흘러들어가며, 그 위의 추론 경로(projectForInference -> scopeFacilities -> inferTargets)
+  // 어디에도 절대 전달되지 않는다. 점수·순위·후보 필터링에 이 값이 섞이면 안 된다.
+  //
+  // 정의(현재 스코프+시간창에서 "진짜" 표적들): 이벤트 centroid가 스코프 원 안에 들고, 캠페인
+  // 기간 [startDay,endDay]가 현재 시간창과 겹치는 모든 캠페인의 targetId. 여러 캠페인이 동시에
+  // 활성일 수 있으므로 0개/1개/여러 개 다 나올 수 있다 — "정확히 하나"라고 가정하지 않는다.
+  // ══════════════════════════════════════════════════════════════════════════════════
+  function computeAnswerKeyFacilityIds(scopeActive, win) {
+    const ids = new Set();
+    for (const camp of campaigns) {
+      const timeOverlaps = camp.startDay <= win.endDay && camp.endDay >= win.startDay;
+      if (!timeOverlaps) continue;
+      const campEvents = camp.eventIds.map((id) => eventsById.get(id)).filter(Boolean);
+      if (!campEvents.length) continue;
+      // centroid: 캠페인 이벤트 좌표의 산술 평균 (§5.3 control-window 구성이 쓰는 것과 같은 정의).
+      const clat = campEvents.reduce((s, e) => s + e.lat, 0) / campEvents.length;
+      const clon = campEvents.reduce((s, e) => s + e.lon, 0) / campEvents.length;
+      const distKm = haversineKm(scopeActive.lat, scopeActive.lon, clat, clon);
+      if (distKm <= scopeActive.radiusKm) ids.add(camp.targetId);
+    }
+    return ids;
+  }
 
   /** 스코프/시간창/선택이 바뀔 때마다 inferTargets를 다시 돌리고, 지도 레이어·결과 패널을 갱신한다. */
   function recomputeInference() {
@@ -183,6 +219,11 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
       supportingEvents,
     };
 
+    // reveal이 꺼져 있으면 answer-key 계산 자체를 하지 않고 null을 넘긴다 — results-panel.js는
+    // revealTargetIds가 null이면 답 관련 마크업을 아예 만들지 않으므로, DOM에도 그 어떤 형태로도
+    // 정답이 새지 않는다(prop으로도, class로도, 숨겨진 텍스트로도).
+    const revealTargetIds = reveal ? computeAnswerKeyFacilityIds(active, win) : null;
+
     resultsPanel.render({
       ranked: result.ranked,
       eventCount: result.eventCount,
@@ -192,6 +233,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
       selectedFacilityId,
       scopeCenter: active,
       evaluation: cachedEval,
+      revealTargetIds,
     });
   }
 
@@ -446,8 +488,10 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     reveal = !reveal;
     e.currentTarget.classList.toggle("on", reveal);
     // map.setFrame에도 reveal을 넘기지만 map.js는 M1에서 이를 사용하지 않는다(모듈 주석 참고) —
-    // 카드/타임라인만 reveal에 반응한다. 결과 패널/추론 레이어는 reveal과 무관하게 정답지를
-    // 절대 보여주지 않는다(정답지 분리 경계, SPEC_M3 §3).
+    // 카드/타임라인만 reveal에 반응한다. 결과 패널의 ANSWER KEY 배지는 reveal에 반응하지만
+    // (computeAnswerKeyFacilityIds, 위 recomputeInference 참고) 추론 자체(랭킹/점수)는
+    // reveal과 무관하게 항상 그대로다 — 정답지 분리 경계, SPEC_M3 §3.
+    recomputeInference(); // reveal 토글 즉시 결과 패널의 답 배지를 갱신한다.
   };
 
   ppEl.onclick = (e) => {

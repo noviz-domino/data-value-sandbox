@@ -85,6 +85,25 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
   // 없지만, destroy 전까지 마지막 프레임 정보를 들고 있으면 디버깅에 유용하다.
   let lastFrame = null;
 
+  // ── 파생 배열 캐시 (일시정지 중 매 rAF 프레임 재계산을 막는다) ────────────────────────
+  // main.js의 재생 루프는 playing=false일 때도 requestAnimationFrame마다 setFrame을 호출한다
+  // (chrome()/windowControl.draw()가 계속 갱신돼야 해서). 그런데 지금까지는 그 매 프레임마다
+  // visibleEvents/recentEvents/orgFrames를 filter/map으로 새로 만들었다 — 입력이 하나도 안
+  // 바뀌었어도 새 배열 identity가 나오니 deck.gl이 매번 diff하고 해당 레이어를 재업로드한다.
+  // 실제로 값이 바뀔 수 있는 입력(events 배열 identity, day, visibleOrgs 내용, orgs/periods
+  // identity)이 그대로면 이전 계산 결과를 그대로 재사용한다.
+  const derivedCache = {
+    visibleEvents: { eventsRef: null, day: null, orgsKey: null, data: [] },
+    recentEvents: { visibleEventsRef: null, day: null, data: [] },
+    orgFrames: { orgsRef: null, periodsRef: null, day: null, orgsKey: null, data: [] },
+  };
+  // visibleOrgs는 main.js에서 매번 새 Set을 만들지 않고 같은 Set 인스턴스를 add/delete로 계속
+  // 고쳐 쓰므로, 참조(reference)만 비교하면 내용이 바뀌어도 "안 바뀜"으로 오판한다. 정렬된
+  // 키 문자열로 내용을 비교한다. visibleOrgs가 없으면(=전부 표시) 고정 문자열을 쓴다.
+  function visibleOrgsKeyOf(visibleOrgs) {
+    return visibleOrgs ? Array.from(visibleOrgs).sort().join(",") : "__all__";
+  }
+
   const deckInstance = new Deck({
     parent: container, // container 안에 deck.gl이 자체 <canvas>를 만들어 붙인다
     views: new MapView({ id: "map", controller: true }), // controller:true — 팬/줌/스크롤을 deck.gl이 알아서 처리
@@ -165,7 +184,20 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
     // M3-T3부터 events는 이미 main.js의 query.js(queryEvents)가 시간창(window)으로 걸러서 넘긴다 —
     // 이 레이어는 그 안에서 "보이는 조직인가"만 한 번 더 거른다. e.day <= day는 방어적으로 남겨둔다
     // (day는 main.js가 windowEnd로 넘기므로 windowed events는 이미 이 조건을 만족한다).
-    const visibleEvents = (events || []).filter((e) => e.day <= day && isVisible(e.org));
+    // 캐시: events 배열 identity(main.js가 시간창을 바꿀 때만 새로 만든다) + day + 보이는 조직
+    // 집합이 전부 그대로면 filter를 다시 돌리지 않고 지난 결과를 재사용한다.
+    const orgsKey = visibleOrgsKeyOf(visibleOrgs);
+    const vc = derivedCache.visibleEvents;
+    let visibleEvents;
+    if (vc.eventsRef === events && vc.day === day && vc.orgsKey === orgsKey) {
+      visibleEvents = vc.data;
+    } else {
+      visibleEvents = (events || []).filter((e) => e.day <= day && isVisible(e.org));
+      vc.eventsRef = events;
+      vc.day = day;
+      vc.orgsKey = orgsKey;
+      vc.data = visibleEvents;
+    }
 
     // ── 2. 누적 이벤트 — 2px 남짓, 조직색, 낮은 불투명도(0.35) ──────────────────
     layers.push(
@@ -181,7 +213,17 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
     );
 
     // ── 3. 최근 이벤트(≤30일) — 가산 블렌딩 글로우. 최신일수록 크고 진하게 ─────────
-    const recentEvents = visibleEvents.filter((e) => day - e.day >= 0 && day - e.day <= 30);
+    // 캐시: visibleEvents identity(위에서 캐시 히트면 바로 이전 배열)와 day가 그대로면 재사용.
+    const rc = derivedCache.recentEvents;
+    let recentEvents;
+    if (rc.visibleEventsRef === visibleEvents && rc.day === day) {
+      recentEvents = rc.data;
+    } else {
+      recentEvents = visibleEvents.filter((e) => day - e.day >= 0 && day - e.day <= 30);
+      rc.visibleEventsRef = visibleEvents;
+      rc.day = day;
+      rc.data = recentEvents;
+    }
     layers.push(
       new ScatterplotLayer({
         id: "events-glow",
@@ -207,14 +249,27 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
     );
 
     // 이후 org 레이어들(마커/라벨/반경/궤적)에 공통으로 쓸 "오늘의 조직 상태"를 한 번만 계산한다.
-    const orgFrames = (orgs || [])
-      .filter((org) => isVisible(org.key))
-      .map((org) => {
-        const [la, lo] = currentBase(org, day);
-        const directiveKey = activeDirectiveFor(org, periods || [], day);
-        const radiusKm = org.baseRadius * DIRECTIVES[directiveKey].radiusMult;
-        return { org, lat: la, lon: lo, directiveKey, radiusKm };
-      });
+    // 캐시: orgs/periods identity(둘 다 main.js에서 한 번 만들어져 그대로 유지된다) + day + 보이는
+    // 조직 집합이 그대로면 재사용 — 일시정지 중에는 매 프레임 똑같은 배열을 그대로 돌려준다.
+    const oc = derivedCache.orgFrames;
+    let orgFrames;
+    if (oc.orgsRef === orgs && oc.periodsRef === periods && oc.day === day && oc.orgsKey === orgsKey) {
+      orgFrames = oc.data;
+    } else {
+      orgFrames = (orgs || [])
+        .filter((org) => isVisible(org.key))
+        .map((org) => {
+          const [la, lo] = currentBase(org, day);
+          const directiveKey = activeDirectiveFor(org, periods || [], day);
+          const radiusKm = org.baseRadius * DIRECTIVES[directiveKey].radiusMult;
+          return { org, lat: la, lon: lo, directiveKey, radiusKm };
+        });
+      oc.orgsRef = orgs;
+      oc.periodsRef = periods;
+      oc.day = day;
+      oc.orgsKey = orgsKey;
+      oc.data = orgFrames;
+    }
 
     // ── 4. 조직 기본 위치 마커 (색 채움 원 + 얇은 테두리) ──────────────────────
     layers.push(
