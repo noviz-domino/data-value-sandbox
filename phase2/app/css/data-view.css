@@ -1,10 +1,45 @@
 /* 데이터(DAT) 뷰 전용 스타일 (SPEC_M4 §4). 이 뷰를 구현하는 에이전트만 이 파일을 건드린다 —
-   style.css/다른 view CSS와 접촉면을 만들지 않기 위해 일부러 빈 파일로 시작한다.
+   style.css/다른 view CSS와 접촉면을 만들지 않기 위해 일부러 빈 파일로 시작했었다.
    색상은 phase2/app/js/palette.js / css/style.css의 :root 커스텀 프로퍼티만 쓸 것. */
 
-.data-view-stub-sub {
-  margin-top: 6px;
-  font-family: var(--f-mono);
-  font-size: 11px;
-  color: var(--ink-mute);
-}
+.dat { padding: 16px; display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
+.dat-panel { background: var(--riser); border: 1px solid var(--hair); border-radius: 6px; padding: 16px;
+  display: flex; flex-direction: column; min-height: 0; }
+.dat-subtitle { color: var(--ink-dim); font-size: 13px; margin: 4px 0 12px; }
+
+/* ── 로컬 reveal 토글 — 판단 근거는 data-view.js 상단 주석 참고 ─────────────────────── */
+.dat-reveal-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
+.dat-reveal-btn { min-width: 220px; }
+.dat-reveal-note { color: var(--ink-mute); font-size: 11.5px; line-height: 1.5; max-width: 62ch; }
+
+/* ── 필터 바 ──────────────────────────────────────────────────────────────────────── */
+.dat-filters { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.dat-field { display: flex; flex-direction: column; gap: 3px; font-family: var(--f-cond); font-weight: 600;
+  font-size: 10px; letter-spacing: .08em; color: var(--ink-mute); text-transform: uppercase; }
+.dat-field select, .dat-field input { background: var(--deck); border: 1px solid var(--hair-lit);
+  color: var(--ink); font-family: var(--f-mono); font-size: 11px; padding: 4px 6px; min-width: 108px; }
+.dat-field select:disabled { color: var(--ink-mute); border-color: var(--hair); cursor: not-allowed; }
+
+/* ── 요약 줄 (건수/필터/타이밍) ───────────────────────────────────────────────────── */
+.dat-summary { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; margin-bottom: 10px;
+  font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-dim); }
+.dat-count { color: var(--ink); font-weight: 500; }
+.dat-timing { color: var(--ink-mute); margin-left: auto; }
+
+/* ── 표 ──────────────────────────────────────────────────────────────────────────── */
+.dat-table-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--hair); }
+.dat-table { width: 100%; border-collapse: collapse; font-family: var(--f-mono); font-size: 12px; }
+.dat-table th, .dat-table td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--hair);
+  white-space: nowrap; }
+.dat-table thead th { position: sticky; top: 0; background: var(--deck); z-index: 1; }
+.dat-th { color: var(--ink-mute); font-family: var(--f-cond); font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; font-size: 10.5px; cursor: pointer; user-select: none; }
+.dat-th:hover { color: var(--ink-dim); }
+.dat-th.on { color: var(--ink); }
+.dat-table tbody tr:hover { background: var(--riser); }
+
+/* ── 내보내기 패널 ────────────────────────────────────────────────────────────────── */
+.dat-export-panel { flex: none; }
+.dat-export-row { display: flex; gap: 12px; margin-bottom: 8px; }
+.dat-export-note { color: var(--ink-mute); font-size: 11.5px; line-height: 1.5; max-width: 76ch; }
