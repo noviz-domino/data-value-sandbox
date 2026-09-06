@@ -48,7 +48,7 @@ A `KO / EN` segmented control in the top status bar, right-aligned near the exis
 
 Korean rendering already has a font fallback in `css/style.css`; do not remove it.
 
-## 1.5 The analyst-first interaction model — the correction that reshaped M4
+## 2. The analyst-first interaction model — the correction that reshaped M4
 
 The app was opening on the wrong thing, and a user seeing it for the first time said so: *"three labelled things move in a line and coloured dots appear around them — what is this?"*
 
@@ -89,11 +89,11 @@ A second action that answers *"anywhere in view, what looks most prepared-agains
 
 If a scope holds too few events, or no candidate stands out, say that plainly instead of rendering a confident-looking ranking. The §5.2 warnings already exist; the interface must give them room. **A ranking backed by 12 events must not look like one backed by 300** — this is the same rule as the floor: never show a number without what makes it readable.
 
-## 2. Organisations view (`#view-org`) — SPEC.md §12
+## 3. Organisations view (`#view-org`) — SPEC.md §12
 
 Currently a placeholder. Build the editable configuration surface.
 
-### 2.1 Per-organisation form
+### 3.1 Per-organisation form
 
 One card per organisation over the §7 parameters: base coordinates, branches and their shares, base radius, base tempo, drift bearing and rate, seasonal months and multiplier, target preference.
 
@@ -101,7 +101,7 @@ One card per organisation over the §7 parameters: base coordinates, branches an
 - A **Reset to defaults** control. The §7 defaults are what the committed dataset and every published number came from, so returning to them must always be one click.
 - A small preview map showing base position and radius as the user edits, so the effect is visible before committing to a 1,826-day run.
 
-### 2.2 Signal strength sliders — SPEC.md §12.1
+### 3.2 Signal strength sliders — SPEC.md §12.1
 
 The most important control surface in the application. Each planted signal gets a slider from `0` (absent) to `2.0` (double), defaulting to `1.0`:
 
@@ -115,7 +115,7 @@ The most important control surface in the application. Each planted signal gets 
 
 The noise-ratio slider is the M3 addition and belongs here: it asks *at what noise level does target inference stop working?* — the question the 80/20 split was built to make askable.
 
-### 2.3 Sweep
+### 3.3 Sweep
 
 A **Sweep this signal** action re-runs simulation + analysis at strengths `0, 0.25, 0.5, 1.0, 1.5, 2.0` and plots the result against signal strength. Plot two curves on the same axes:
 
@@ -126,7 +126,7 @@ Six full cycles is expensive. **Use a single seed for the sweep** (the current s
 
 This curve is the project's real output: **how strong must a pattern be before it becomes detectable, and below what strength does no amount of modelling help?**
 
-## 3. Data view (`#view-dat`) — SPEC.md §14
+## 4. Data view (`#view-dat`) — SPEC.md §14
 
 Currently a placeholder.
 
@@ -141,7 +141,7 @@ CSV columns, in this order, matching the event schema: `id,day,date,lat,lon,org,
 
 `ground_truth.json` contains `{ seed, days, startDate, organisations, directives, periods, campaigns, facilities }` — everything a scorer needs and a model must not see.
 
-## 4. Guided first run — SPEC.md §10.1
+## 5. Guided first run — SPEC.md §10.1
 
 Four steps, dismissible at any point, shown once and then never again (`localStorage` key `gtc.tour`). Anchored to real elements, with a highlight and a short line of copy. Translated like everything else.
 
@@ -154,7 +154,7 @@ Four steps, dismissible at any point, shown once and then never again (`localSto
 
 Add a small **restart tour** affordance somewhere unobtrusive, so a returning visitor (and the author, demonstrating it) can replay it without clearing storage.
 
-## 5. Constraints that do not change
+## 6. Constraints that do not change
 
 - Ground-truth separation (`SPEC_M3.md` §3) applies to everything here. The data view may *display* ground truth and export it as a separate file; nothing in the inference path may read it.
 - Determinism: no `Math.random`, seeded RNG only.

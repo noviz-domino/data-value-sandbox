@@ -274,7 +274,7 @@ Spec: [SPEC_M4.md](SPEC_M4.md). Ground-truth separation (SPEC_M3 §3) still appl
 > answer was painted on screen before any question was asked; and target inference, the point of the
 > tool, was a side panel reachable only by knowing to drag. The M3 review checked that ground truth
 > never reaches the *model*; nobody checked whether it reaches the *screen*. It did.
-- [ ] neutral event dots by default; org colours/bases/radii/directives gated behind reveal (§1.5)
+- [ ] neutral event dots by default; org colours/bases/radii/directives gated behind reveal (SPEC_M4 §2)
 - [ ] facilities visible by default — they are the answer space, not the answer
 - [ ] scope selection as the first-class first step; explicit **Analyze** action (user chose this over
       auto-run: "I might want to place a point and size a region first")
@@ -283,16 +283,16 @@ Spec: [SPEC_M4.md](SPEC_M4.md). Ground-truth separation (SPEC_M3 §3) still appl
 - [ ] weak/empty states given room — a ranking backed by 12 events must not look like one backed by 300
 
 ### M4-T3 — organisations view + signal sliders + sweep (Sonnet author)
-- [ ] per-org editable form, stale-state banner, reset to defaults, preview map (§2.1)
-- [ ] signal sliders incl. the new noise-ratio slider (§2.2)
-- [ ] sweep at 6 strengths plotting M2 recovered fraction + M3 top-1 against their floors, single seed, labelled as such (§2.3)
+- [ ] per-org editable form, stale-state banner, reset to defaults, preview map (§3.1)
+- [ ] signal sliders incl. the new noise-ratio slider (§3.2)
+- [ ] sweep at 6 strengths plotting M2 recovered fraction + M3 top-1 against their floors, single seed, labelled as such (§3.3)
 
 ### M4-T4 — data view + export (Sonnet author)
-- [ ] sortable/filterable event table, row count + filter summary (§3)
+- [ ] sortable/filterable event table, row count + filter summary (§4)
 - [ ] separate `events.csv` and `ground_truth.json` exports — no combined export, by design
 
 ### M4-T5 — guided first run (Sonnet author)
-- [ ] four anchored steps, dismissible, once-only via localStorage, restart affordance (§4)
+- [ ] four anchored steps, dismissible, once-only via localStorage, restart affordance (§5)
 
 ### M4-T6 — architect final review (Opus)
 - [ ] cross-review, live run, screenshots in both languages, DEVLOG, README, commit
