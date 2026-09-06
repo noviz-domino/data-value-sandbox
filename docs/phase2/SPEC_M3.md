@@ -170,7 +170,18 @@ Sum over events. The kernel peaks at the middle of the campaign ring band (4–2
 
 **Convergence** (optional). Over in-band events, compute the Pearson correlation `r` between event `day` and distance to `F`. Converging campaigns give strongly negative `r`. Multiply by `(1 + max(0, -r) * 1.8)`. Fewer than 5 in-band events → factor 1.0.
 
-Convert scores to probabilities with a softmax over `score / temperature`, temperature `= 0.35 * mean(scores)`, guarding against a zero mean.
+Convert scores to display probabilities with a softmax over `score / temperature`, where
+`temperature = max(0.35 * stdev(scores), 0.05 * mean(scores), epsilon)` and the exponent is clamped to
+±30 before exponentiating.
+
+**Do not use `0.35 * mean(scores)`.** That was the first draft and it saturates: when one candidate
+dominates, the exponent explodes and the top probability becomes exactly `1.0` in floating point.
+Measured, **30% of pure-noise control windows reported ~100% confidence** that way. Scaling by spread
+instead of mean, and clamping, keeps the probability a usable display value.
+
+A softmax probability answers "how far ahead is first place?", **not** "how strong is the evidence?".
+Three events huddled near one facility produce the same 99% as three hundred. It is therefore fine for
+display and unfit as a detection statistic — see §5.3.
 
 **Warnings** (surface these; they are part of the product):
 - `eventCount < 25` → `"too few events in scope for a reliable estimate"`
@@ -193,11 +204,31 @@ Three feature sets, matching the ladder: `P` proximity only, `PE` + encirclement
 
 **Hit rate.** For each campaign, scope to 160 km centred on the *centroid of that campaign's events* (not on the target — the analyst does not know it), over the campaign's day window widened by ±10 days. Record whether the true `targetId` ranks 1st, and its rank.
 
-**Detection vs false alarm — no magic threshold.** A fixed "probability > 0.35" cut is meaningless when the candidate count varies (a softmax over 4 candidates is confident by construction). Instead:
+**Detection vs false alarm — calibrate on a standout score, never on the probability.** A fixed
+`probability > 0.35` cut is meaningless when the candidate count varies. Calibrating a percentile on
+the softmax probability is *worse*: it was tried, and it degenerated to a 0% detection rate for every
+feature set, because ~30% of noise windows saturate at probability 1.0 and drag the 90th percentile to
+`0.99999999999999`, above every genuine campaign. The metric must be built on a statistic that cannot
+saturate.
 
-1. Draw **40 seeded control windows** per seed: centre on a random facility, radius 160 km, a random 80-day span, rejecting any window that overlaps a real campaign in both space (within 160 km) and time.
-2. Pool the control windows' top-1 probabilities and take the **90th percentile** as the operating threshold — i.e. the threshold at which false alarms are held to **10%**.
-3. Report **detection rate at 10% false-alarm rate**: the share of true campaigns whose top-1 probability clears that threshold *and* whose top-1 is the true target.
+Use the **standout score**: for a window, over the candidates in scope,
+
+```
+z = (topScore - mean(scores)) / stdev(scores)      // 0 if stdev is 0 or fewer than 3 candidates
+```
+
+`z` asks how far the leader stands out from its own peer group. It is scale-free, bounded by
+`sqrt(n-1)`, and does not saturate. Then:
+
+1. Draw **40 seeded control windows** per seed: centre on a random facility, radius 160 km, a random
+   80-day span, rejecting any window that overlaps a real campaign in both space (within 160 km) and time.
+2. Pool the control windows' `z` values; the **90th percentile** is the operating threshold — the point
+   at which false alarms are held to **10%**.
+3. Report **detection rate at 10% false-alarm rate**: the share of true campaigns whose `z` clears that
+   threshold *and* whose top-1 is the true target.
+
+Report the threshold itself and the two `z` distributions (control vs campaign) as summary statistics,
+so a degenerate calibration is visible immediately instead of hiding behind a single 0%.
 
 This is the operating point an analyst actually cares about, and it is why the noise exists at all. A method that names a target in every quiet window is useless no matter how good its hit rate looks.
 
@@ -213,7 +244,9 @@ Node script, same style as `_analysis_selftest.mjs`. Must assert:
 4. No campaign event lies within 1.5 km of its target.
 5. `PEC.top1` is at least **2× the scope-relative floor**.
 6. `PEC.top1 - P.top1 >= 8pp` on the pooled 5-seed result (pooled SE is ~3pp, so 8pp is a real difference rather than sampling noise).
-7. `PEC` detection-rate-at-10%-FAR exceeds `P`'s.
+7. `PEC` detection-rate-at-10%-FAR exceeds `P`'s, and the calibration is **non-degenerate**: the
+   control-window `z` distribution must not be concentrated at its maximum (report its 50th/90th/99th
+   percentiles). A 0% detection rate across all feature sets is a broken metric, not a result — say so.
 8. Determinism: two runs with the same seed give identical rankings.
 
 **Encirclement carries no pass/fail assertion.** Measurement so far shows it changes nothing (`PE.top1 == P.top1` exactly), and a null result is a finding to report, not a defect to tune away. Print its effect and let the numbers speak. If it stays flat, the honest conclusion is that bearing spread is not a usable signal in this geography — say so in the output.
