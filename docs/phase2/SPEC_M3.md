@@ -179,37 +179,48 @@ Convert scores to probabilities with a softmax over `score / temperature`, tempe
 ### 5.3 Evaluation — `evaluateInference(...)`
 
 ```js
-evaluateInference({ events, facilities, campaigns, days, seed })
-// -> { runs: { P: {...}, PE: {...}, PEC: {...} }, floor: { top1, top5 } }
+evaluateInference({ events, facilities, campaigns, days, seed, seeds = 5 })
+// -> { runs: { P:{...}, PE:{...}, PEC:{...} }, campaignsEvaluated, meanCandidatesInScope }
 ```
 
 Three feature sets, matching the ladder: `P` proximity only, `PE` + encirclement, `PEC` + convergence.
 
-**Hit rate.** For each campaign, scope to a circle of radius **60 km** centred on the *centroid of that campaign's events* (not on the target — the analyst does not know it), over the campaign's day window widened by ±10 days. Run inference. Record whether the true `targetId` is ranked 1st, and whether it is in the top 5.
+**Scope radius is 160 km.** This was 60 km in the first draft and it was wrong: at 60 km only **3.9 candidate facilities** fall inside the scope on average, so "pick the right one" was a 1-in-4 question wearing a 1-in-69 costume. At 160 km about **9.2** candidates compete and the campaign's own events are ~18% of what is in scope — close to the global 20/80 signal ratio, so the method has to actually reject noise.
 
-**False alarm rate.** Draw **40 seeded control windows**: a random facility's location as the centre, radius 60 km, a random 80-day window, rejecting any window that overlaps a real campaign in both space (within 60 km) and time. Run inference. A control window counts as a false alarm if its top-1 probability exceeds **0.35** — i.e. the method confidently names a target where no campaign exists.
+**The floor is scope-relative.** A candidate set that varies per window cannot be scored against a global `1/69`. For each evaluation window compute `1 / (candidates in scope)`, and report the mean of those. At 160 km this is ≈ 10.9%, not 1.45%. **Reporting a global floor here would repeat exactly the phase-1 error this project exists to correct** — an accuracy number with no honest baseline beside it.
 
-Report per feature set: `top1`, `top5`, `falseAlarmRate`, `meanEventsInScope`.
+`top5` is reported but is **not a headline**: with ~9 candidates its floor is ~55%, so it carries little information. Always print a metric next to its own floor; a metric whose floor is near 100% must be visibly marked as vacuous rather than quietly dropped.
 
-`floor` = `{ top1: 1/160, top5: 5/160 }` computed from the actual candidate count, not hard-coded.
+**Hit rate.** For each campaign, scope to 160 km centred on the *centroid of that campaign's events* (not on the target — the analyst does not know it), over the campaign's day window widened by ±10 days. Record whether the true `targetId` ranks 1st, and its rank.
+
+**Detection vs false alarm — no magic threshold.** A fixed "probability > 0.35" cut is meaningless when the candidate count varies (a softmax over 4 candidates is confident by construction). Instead:
+
+1. Draw **40 seeded control windows** per seed: centre on a random facility, radius 160 km, a random 80-day span, rejecting any window that overlaps a real campaign in both space (within 160 km) and time.
+2. Pool the control windows' top-1 probabilities and take the **90th percentile** as the operating threshold — i.e. the threshold at which false alarms are held to **10%**.
+3. Report **detection rate at 10% false-alarm rate**: the share of true campaigns whose top-1 probability clears that threshold *and* whose top-1 is the true target.
+
+This is the operating point an analyst actually cares about, and it is why the noise exists at all. A method that names a target in every quiet window is useless no matter how good its hit rate looks.
+
+**Pool across seeds.** One seed yields 54 campaigns, so the standard error on a rate is ~6.8pp — too coarse to call a 7pp difference real. Run **5 seeds** (the given seed plus four derived from it), pool the campaigns and control windows, and report mean and range. Assertions are made on the pooled numbers.
 
 ### 5.4 Self-test — `phase2/app/js/_inference_selftest.mjs`
 
 Node script, same style as `_analysis_selftest.mjs`. Must assert:
 
-1. `withCampaigns: false` reproduces the current M2 event count and the M2 ablation still passes.
+1. `withCampaigns: false` reproduces the M2 event count and the M2 ablation result.
 2. Campaign share is 18–22% of all events.
 3. Every campaign's `eventIds` are disjoint and all exist.
 4. No campaign event lies within 1.5 km of its target.
-5. `top1` for `PEC` ≥ 3× the `top1` floor (i.e. the method beats guessing by a wide margin).
-6. **The ladder holds**: `PEC.top1 > PE.top1 > P.top1`, and `PEC.top1 - P.top1 >= 10pp`.
-7. `PEC.falseAlarmRate <= 0.25`.
+5. `PEC.top1` is at least **2× the scope-relative floor**.
+6. `PEC.top1 - P.top1 >= 8pp` on the pooled 5-seed result (pooled SE is ~3pp, so 8pp is a real difference rather than sampling noise).
+7. `PEC` detection-rate-at-10%-FAR exceeds `P`'s.
 8. Determinism: two runs with the same seed give identical rankings.
 
-Print the full table (feature set × top1/top5/falseAlarm/floor).
+**Encirclement carries no pass/fail assertion.** Measurement so far shows it changes nothing (`PE.top1 == P.top1` exactly), and a null result is a finding to report, not a defect to tune away. Print its effect and let the numbers speak. If it stays flat, the honest conclusion is that bearing spread is not a usable signal in this geography — say so in the output.
 
-**If a threshold fails, report the real numbers — do not tune the generator to clear the bar.** A failing ladder is a finding, not a defect to hide.
+Print the full table: feature set × top1 × scope floor × lift × top5 (with its floor) × detection@10%FAR × mean candidates in scope, with the across-seed range.
 
+**If a threshold fails, report the real numbers — do not tune the generator or the constants to clear the bar.** A failing ladder is a finding.
 ## 6. Interface changes
 
 ### 6.1 Time window replaces the timeline bar

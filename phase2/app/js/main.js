@@ -10,16 +10,10 @@ import { simulate } from "./simulation.js";
 import { createMap } from "./map.js";
 import { createTimeline } from "./timeline.js";
 import { createAnalysisView } from "./analysis-view.js";
-
 // ── 조직 팔레트 ────────────────────────────────────────────────────────────
-// map.js 내부의 ORG_COLORS와 정확히 같은 값(프로토타입 실측치). 이 모듈은 map.js의
-// 색상 상수를 import하지 않으므로(모듈이 그 상수를 export하지 않음) 여기서도 동일하게 정의해
-// 카드/타임라인/피드에 쓴다. 값이 어긋나면 지도와 UI의 색이 달라지므로 반드시 map.js와 맞춘다.
-const ORG_COLORS = {
-  NORTHWIND: "#57C7EA",
-  TIDEBREAK: "#F2A03D",
-  DRYSTONE: "#C77DD8",
-};
+// M3-T4부터는 palette.js가 유일한 색상 소스다(map.js/analysis-view.js와 공유). 카드/
+// 타임라인/피드가 지도와 다른 색을 쓰는 어긋남을 palette.js 하나로 없앤다.
+import { ORG_COLORS } from "./palette.js";
 
 const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const D0 = Date.UTC(2026, 0, 1);

@@ -7,6 +7,7 @@
 import { mulberry32 } from "./rng.js";
 import { dest } from "./geo.js";
 import { ORGS, DIRECTIVES, METHODS, TARGETS, RANGE } from "./organizations.js";
+import { generateCampaigns } from "./campaigns.js";
 
 const DAYS = 1826; // 5년 (2026-01-01 ~ 2030-12-30 부근)
 const START_DATE = "2026-01-01";
@@ -28,7 +29,7 @@ function monthOf(day) {
  * @param {number[]} weights - 각 후보의 가중치 (합이 1일 필요는 없음, 비율만 맞으면 됨)
  * @returns {string} 선택된 값
  */
-function weightedPick(rng, values, weights) {
+export function weightedPick(rng, values, weights) {
   const total = weights.reduce((a, b) => a + b, 0);
   let r = rng() * total;
   for (let i = 0; i < values.length; i++) {
@@ -39,16 +40,22 @@ function weightedPick(rng, values, weights) {
 }
 
 /** 평균 mean인 지수분포(exponential distribution)에서 표본 하나를 뽑는다. 역변환 표본추출법. */
-function sampleExponential(rng, mean) {
+export function sampleExponential(rng, mean) {
   return -mean * Math.log(1 - rng());
 }
 
 /**
  * 5년치 시뮬레이션을 실행한다.
- * @param {{ seed: number, landTest: { isLand:(lon:number,lat:number)=>boolean, isCoastal:(lat:number,lon:number,km?:number)=>boolean } }} params
- * @returns {{ events: object[], periods: object[], byDay: number[][], days: number, startDate: string }}
+ * @param {object} params
+ * @param {number} params.seed
+ * @param {{ isLand:(lon:number,lat:number)=>boolean, isCoastal:(lat:number,lon:number,km?:number)=>boolean }} params.landTest
+ * @param {object|null} [params.facilities] - facilities.json을 JSON.parse한 객체. withCampaigns:true일 때만 필요.
+ * @param {boolean} [params.withCampaigns] - true면 배경 이벤트 위에 캠페인(작전) 이벤트를 얹는다. SPEC_M3 §4.1.
+ *   기본값 false이며, false일 때는 아래 코드가 캠페인 관련 rng를 전혀 소비하지 않으므로
+ *   M2 시절과 byte-for-byte 동일한 결과가 나온다(하위호환 요건).
+ * @returns {{ events: object[], periods: object[], byDay: number[][], days: number, startDate: string, campaigns?: object[], facilities?: object[] }}
  */
-export function simulate({ seed, landTest }) {
+export function simulate({ seed, landTest, facilities = null, withCampaigns = false }) {
   const rng = mulberry32(seed);
   const { isLand, isCoastal } = landTest;
 
@@ -158,5 +165,37 @@ export function simulate({ seed, landTest }) {
     }
   });
 
-  return { events, periods, byDay, days: DAYS, startDate: START_DATE };
+  if (!withCampaigns) {
+    // withCampaigns:false 경로는 여기서 끝난다. 위 배경 생성 루프 외에는 rng를 한 번도 더 건드리지
+    // 않으므로 M2 시절 simulate({seed, landTest})와 완전히 동일한 events/periods/byDay가 나온다.
+    return { events, periods, byDay, days: DAYS, startDate: START_DATE };
+  }
+
+  // withCampaigns:true — 배경 생성이 전부 끝난 "뒤에" 캠페인을 이어서 생성한다. 순서가 중요하다:
+  // 배경 루프가 이미 rng를 다 소비한 뒤에 캠페인이 이어받아야, withCampaigns:false 분기가
+  // 위에서 먼저 return해버려도 배경 이벤트 자체는 두 분기에서 완전히 동일하게 나온다.
+  if (!facilities) {
+    throw new Error("simulate(): withCampaigns:true 인 경우 facilities(facilities.json 파싱 객체)가 필요합니다.");
+  }
+  const facilityList = facilities.facilities;
+  const campaigns = generateCampaigns({
+    rng,
+    isLand,
+    orgs: ORGS,
+    facilities: facilityList,
+    totalDays: DAYS,
+    events, // in-place push
+    byDay, // in-place 증가
+    allocateId: () => nextEventId++, // 배경 이벤트와 id 공간을 공유 — id로 배경/캠페인을 구분할 수 없게 한다.
+    sampleExponential,
+    weightedPick,
+  });
+
+  // 배경 이벤트는 day 오름차순으로 이미 쌓여 있었지만, 캠페인 이벤트를 뒤에 append했으므로
+  // 전체적으로는 날짜순이 깨져 있다. main.js 등 소비자가 "events는 day 오름차순"이라는 전제로
+  // 포인터를 전진시키므로(§4.1 하위호환과는 별개로) 여기서 한 번 정렬해 그 전제를 지켜준다.
+  // 같은 날짜 안에서는 원래 삽입 순서(배경이 캠페인보다 먼저)를 유지하도록 안정 정렬(stable sort)에 기댄다.
+  events.sort((a, b) => a.day - b.day);
+
+  return { events, periods, byDay, days: DAYS, startDate: START_DATE, campaigns, facilities: facilityList };
 }

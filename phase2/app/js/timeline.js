@@ -2,6 +2,10 @@
 // and (when `reveal` is on) directive bands with CONS/EXPA/SUPP labels.
 // Extracted from phase2/prototype/index.html's tline() + scrub() functions.
 
+// 색상은 palette.js(M3-T4) 한 곳에서 가져온다 — <canvas>는 CSS 변수를 읽을 수 없어서
+// style.css의 :root와 같은 값을 JS 리터럴로도 들고 있어야 한다(palette.js 상단 주석 참고).
+import { HEX, RGB, rgba } from "./palette.js";
+
 // createTimeline(canvas, { onScrub }) -> { draw(state) }
 //   canvas   : the <canvas id="tlc"> element. Its 2D context is expected to
 //              already have any devicePixelRatio scaling applied by the
@@ -32,7 +36,7 @@ export function createTimeline(canvas, { onScrub } = {}) {
     const h = canvas.height / dpr;
 
     tx.clearRect(0, 0, w, h);
-    tx.fillStyle = "#0C1319";
+    tx.fillStyle = HEX.deck;
     tx.fillRect(0, 0, w, h);
 
     const numOrgs = orgColors.length;
@@ -47,18 +51,18 @@ export function createTimeline(canvas, { onScrub } = {}) {
         const y = p.o * (bh + gap);
         const bw = x2 - x;
         tx.fillStyle =
-          p.d === "EXPAND" ? "rgba(203,217,227,.30)" :
-          p.d === "SUPPRESS" ? "rgba(203,217,227,.07)" :
-          "rgba(203,217,227,.17)";
+          p.d === "EXPAND" ? rgba(RGB.ink, .30) :
+          p.d === "SUPPRESS" ? rgba(RGB.ink, .07) :
+          rgba(RGB.ink, .17);
         tx.fillRect(x, y, bw, bh);
-        tx.strokeStyle = "rgba(160,186,204,.85)";
+        tx.strokeStyle = rgba(RGB.hairLit, .85); // 강조 테두리 톤 재사용 — 배경 대비 3:1 이상 확보된 값
         tx.lineWidth = 1;
         tx.beginPath();
         tx.moveTo(x + .5, y);
         tx.lineTo(x + .5, y + bh);
         tx.stroke();
         if (bw > 52) {
-          tx.fillStyle = "rgba(230,240,247,.85)";
+          tx.fillStyle = rgba(RGB.ink, .85); // 순백이 아니라 본문 ink 톤 그대로 사용(과도한 glow 방지)
           tx.font = '600 8.5px "IBM Plex Sans Condensed",sans-serif';
           tx.textAlign = "left";
           if (tx.letterSpacing !== undefined) tx.letterSpacing = "1px";
@@ -84,13 +88,13 @@ export function createTimeline(canvas, { onScrub } = {}) {
 
     // Playhead.
     const ph = (day / days) * w;
-    tx.strokeStyle = "#CBD9E3";
+    tx.strokeStyle = HEX.ink;
     tx.lineWidth = 1;
     tx.beginPath();
     tx.moveTo(ph, 0);
     tx.lineTo(ph, h);
     tx.stroke();
-    tx.fillStyle = "#CBD9E3";
+    tx.fillStyle = HEX.ink;
     tx.fillRect(ph - 3, 0, 6, 3);
   }
 

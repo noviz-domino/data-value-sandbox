@@ -19,32 +19,12 @@
 
 import { dest } from "./geo.js";
 import { DIRECTIVES } from "./organizations.js";
-
-// SPEC §15.1의 조직 팔레트는 이후 프로토타입에서 실측 검증된 값(§57C7EA 등)으로
-// 갱신되었다 — 이 프로젝트가 "지금 재현해야 할 검증된 시각 의도"로 지정한
-// phase2/prototype/index.html 라인 227-229와 정확히 일치시킨다.
-const ORG_COLORS = {
-  NORTHWIND: "#57C7EA",
-  TIDEBREAK: "#F2A03D",
-  DRYSTONE: "#C77DD8",
-};
-
-// 지도 크롬(chrome) 색상. SPEC §15.1 --land/--land-edge 값을 그대로 사용.
-const LAND_FILL = "#263038";
-const LAND_EDGE = "#38454F";
+// 색상 팔레트(M3-T4)는 이제 전부 palette.js 한 곳에서 관리한다. 이 모듈이 CSS
+// :root(--void/--land 등)와 어긋나지 않도록, 값을 바꿀 땐 palette.js와 style.css를
+// 같이 고칠 것 — palette.js 상단 주석에 그 이유가 적혀 있다.
+import { RGB, ORG_RGB } from "./palette.js";
 
 const DEFAULT_DIRECTIVE = "CONSOLIDATE"; // 활성 기간(period)이 없을 때(시뮬레이션 시작 직후 등)의 폴백. 프로토타입과 동일한 규칙.
-
-/** "#RRGGBB" 문자열을 deck.gl이 기대하는 [r,g,b] 정수 배열(0-255)로 바꾼다. */
-function hexToRgb(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-// 매 setFrame마다 새로 만들지 않도록 조직별 RGB를 한 번만 계산해 캐시한다.
-const ORG_RGB = Object.fromEntries(
-  Object.entries(ORG_COLORS).map(([k, v]) => [k, hexToRgb(v)])
-);
 
 /**
  * 조직 하나의 오늘(day) 시점 실효 반경(km)과 활성 지침을 구한다.
@@ -96,7 +76,7 @@ export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
       viewState = vs;
       deckInstance.setProps({ viewState });
     },
-    // 배경을 완전 투명하게 비워서 페이지의 --void(#070B0F)가 그대로 비치게 한다.
+    // 배경을 완전 투명하게 비워서 페이지의 --void(#0B1017)가 그대로 비치게 한다.
     parameters: { clearColor: [0, 0, 0, 0] },
     style: { backgroundColor: "transparent" },
     layers: [],
@@ -130,7 +110,7 @@ export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
           data: landGeo,
           filled: true,
           stroked: false,
-          getFillColor: hexToRgb(LAND_FILL),
+          getFillColor: RGB.land,
           pickable: false,
         })
       );
@@ -142,7 +122,7 @@ export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
           data: coastGeo,
           filled: false, // 해안선은 채우지 않는다 — 육지 채움은 위의 land 레이어가 이미 담당
           stroked: true,
-          getLineColor: hexToRgb(LAND_EDGE),
+          getLineColor: RGB.landEdge,
           lineWidthMinPixels: 1,
           pickable: false,
         })
@@ -211,7 +191,7 @@ export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
         getRadius: 6,
         getFillColor: (d) => colorOf(d.org.key),
         stroked: true,
-        getLineColor: [7, 11, 15], // --void — 배경과 대비되는 얇은 테두리
+        getLineColor: RGB.void, // --void — 배경과 대비되는 얇은 테두리
         lineWidthMinPixels: 1,
         pickable: true,
       })

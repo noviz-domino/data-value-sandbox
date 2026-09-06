@@ -1,7 +1,16 @@
+/* ── 색상 시스템 (M3-T4) ──────────────────────────────────────────────────────────────
+   SPEC_M3.md §7 결정 사항을 그대로 옮긴다. 6:3:1(배경:패널:악센트) 비율, 순수 검정/순수
+   흰색을 피한 청회색 톤, 리드 악센트(cyan) 하나만 장식적으로 쓰고 amber/red는 경고 전용.
+   조직 색(--nw/--tb/--ds)은 예외다 — 이건 장식이 아니라 "어느 조직인지"를 나타내는
+   데이터 인코딩이라, warn 전용 규칙과 별개로 유지한다(TIDEBREAK가 amber인 것도 동일 이유).
+   phase2/app/js/palette.js가 이 값들을 그대로 미러링한다(JS 쪽 deck.gl 레이어·canvas
+   타임라인은 CSS 변수를 읽을 수 없어 숫자 RGB로 다시 정의해야 하기 때문 — 값을 바꾸면
+   반드시 palette.js도 같이 바꿀 것). */
 :root{
-  --void:#070B0F; --deck:#0C1319; --riser:#121C23; --hair:#1C2A34; --hair-lit:#2E4150;
-  --ink:#CBD9E3; --ink-dim:#70899B; --ink-mute:#42586A;
+  --void:#0B1017; --deck:#121922; --riser:#1A232E; --hair:#212D38; --hair-lit:#57708A;
+  --ink:#C9D4DF; --ink-dim:#8CA0B3; --ink-mute:#5E7180;
   --nw:#57C7EA; --tb:#F2A03D; --ds:#C77DD8;
+  --land:#26323C; --land-edge:#3B4C58;
   --f-cond:"IBM Plex Sans Condensed",system-ui,sans-serif;
   --f-sans:"IBM Plex Sans",system-ui,sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,monospace;
@@ -173,4 +182,4 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
   font-family:var(--f-mono);font-size:10px;letter-spacing:.04em}
 .anl-cm-cell{display:flex;align-items:center;justify-content:center;height:34px;
   border-radius:3px;font-family:var(--f-mono);font-size:12px;color:var(--void)}
-.anl-cm-cell span{color:#0B0F14;font-weight:600;text-shadow:0 0 2px rgba(255,255,255,.35)}
+.anl-cm-cell span{color:var(--void);font-weight:600;text-shadow:0 0 2px rgba(255,255,255,.35)}

@@ -7,13 +7,9 @@
 
 import { ORGS } from "./organizations.js";
 import { runAblation } from "./analysis.js";
-
-// map.js/main.js와 동일한 실측 팔레트(§15.1의 --org-* 변수와 다르므로 여기서도 맞춰 정의).
-const ORG_COLORS = {
-  NORTHWIND: "#57C7EA",
-  TIDEBREAK: "#F2A03D",
-  DRYSTONE: "#C77DD8",
-};
+// map.js/main.js와 같은 palette.js를 쓴다(M3-T4) — 조직 색이 지도·카드·이 뷰에서
+// 서로 어긋나지 않도록 한 곳에서만 정의한다.
+import { ORG_COLORS } from "./palette.js";
 const RUN_KEYS = ["A", "B", "C"];
 const RUN_LABELS = {
   A: "A · lat, lon",
