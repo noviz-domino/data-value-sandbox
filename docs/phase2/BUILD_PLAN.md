@@ -23,8 +23,18 @@ Everything in SPEC §6–§9 (simulation rules, organizations, data contracts, a
 
 - **M1 — map & simulation view** ✅ DONE (2026-09-04). deck.gl + Natural Earth: world map, 5-year playback, org markers + radius, drift, reveal toggle, timeline, activity feed. Runs at `phase2/app/` (dev server: launch.json `app`, port 8779).
 - M2 — analysis view: ablation runs, floor/ceiling, confusion matrices. ✅ DONE (2026-09-04). Ladder: floor 38.8% → A 64.7% → B TIDEBREAK recall +14.9pp → C DRYSTONE recall +16.1pp, oracle ceiling 86.6% (true bound after wiring branch share). Orgs relocated to Lesser Sunda chain for overlap.
-- M3 — organizations view + signal-strength sliders + sweep.
+- M3 — **target inference** (redefined 2026-09-06, supersedes "organizations view + signal-strength sliders"). Infer which facility a scattered set of incidents is preparing against, with 80% background noise. See [SPEC_M3.md](SPEC_M3.md).
 - M4 — data view + export, guided tour, density layer, seed variance.
+
+### Why M3 was redefined
+
+The original M3 (signal-strength sliders) had no clear consumer. The project's identity settled as a **methodology instrument for intelligence-style analysis**: not "predict terrorism" but "what must you collect before prediction is possible, and where does the method break". Target inference is that question in its sharpest form — and the noise ratio slider survives inside it with a real job (at what noise level does inference fail).
+
+Design decisions locked with the user before writing SPEC_M3:
+- Candidate targets are **real facility locations** (OSM/ODbL, 160 in the AO) with **names withheld** — realistic placement without producing a target list for real infrastructure.
+- **80% of events are unrelated noise**, and noise clusters near facilities too (otherwise "activity near a facility" trivially means "target").
+- Multiple organisations run **simultaneous campaigns against different targets**, so grouping events is a genuine problem.
+- Production datasets (real GTD/ACLED) are **out of scope**; M3 builds structure at test scale.
 
 ---
 
@@ -189,3 +199,39 @@ Ablation feature sets (SPEC §9.3), target = `org`, 80/20 split stratified by or
 - Dev server: `python -m http.server 8778 --bind 127.0.0.1 --directory phase2/app`
 - Verify by JSON probe first (`javascript_tool` → dump numbers); screenshot only for visual judgement, saved via the POST capture-server pattern (see CLAUDE.md) into `docs/screenshots/`.
 - deck.gl + local GeoJSON fetch does NOT work inside a Claude artifact (CSP blocks the fetch). Use the local server. This is expected, not a bug.
+
+---
+
+## M3 tasks & checklist — target inference [CURRENT]
+
+Spec: [SPEC_M3.md](SPEC_M3.md). Ground-truth separation (§3) applies to every task.
+
+### M3-T0 — architect: SPEC_M3 + facilities data [DONE]
+- [x] `phase2/app/data/facilities.json` — 160 candidates (102 power, 33 airport, 25 port), anonymised ids, 10.6 KB
+- [x] SPEC_M3.md with locked numbers (ring 28→4 km, 100-day cadence, 12 events/campaign, 20/80 split)
+
+### M3-T1 — simulator campaigns (Sonnet author → reviewer) [correctness-critical]
+- [ ] `campaigns.js` + `simulate()` gains `{facilities, withCampaigns}` per SPEC_M3 §4
+- [ ] `withCampaigns:false` byte-identical to today; M2 self-test still passes
+- [ ] ground truth `campaigns[]`, 20% signal share, no event within 1.5 km of its target
+
+### M3-T2 — inference engine `inference.js` (Sonnet author → reviewer) [correctness-critical]
+- [ ] `projectForInference` / `scopeEvents` / `scopeFacilities` / `inferTargets` / `evaluateInference` per §5
+- [ ] `_inference_selftest.mjs` — 8 assertions incl. the P→PE→PEC ladder and false-alarm rate
+
+### M3-T3 — UI: time window + scope selection + results panel (Sonnet author) [live-validated]
+- [ ] timeline bar → time window control, default last 100 days (§6.1)
+- [ ] `queryEvents({scope, window})` seam so views never index the array (§6.2)
+- [ ] map scope circle (click-drag + numeric radius), results panel with floor and warnings (§6.3–6.4)
+
+### M3-T4 — visual language 6:3:1 (Sonnet author) [independent of T1–T3]
+- [ ] CSS custom properties in one place, deep blue-grey ground, one lead accent, WCAG AA text (§7)
+
+### M3-T5 — architect final review (Opus)
+- [ ] live run, screenshots, DEVLOG entry, commit, report at milestone boundary
+
+## Resume notes (M3)
+
+If a session is interrupted: `git log --oneline -5` shows what landed. Tasks are independent enough that
+an unfinished T3/T4 does not block T1/T2. Run both self-tests before trusting any state:
+`node phase2/app/js/_analysis_selftest.mjs` and `node phase2/app/js/_inference_selftest.mjs`.
