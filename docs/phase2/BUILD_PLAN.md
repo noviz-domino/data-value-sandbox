@@ -252,3 +252,39 @@ Spec: [SPEC_M3.md](SPEC_M3.md). Ground-truth separation (§3) applies to every t
 If a session is interrupted: `git log --oneline -5` shows what landed. Tasks are independent enough that
 an unfinished T3/T4 does not block T1/T2. Run both self-tests before trusting any state:
 `node phase2/app/js/_analysis_selftest.mjs` and `node phase2/app/js/_inference_selftest.mjs`.
+
+---
+
+## M4 tasks & checklist — language toggle + remaining views [CURRENT]
+
+Spec: [SPEC_M4.md](SPEC_M4.md). Ground-truth separation (SPEC_M3 §3) still applies to every task.
+
+### M4-T0 — architect: SPEC_M4 [DONE]
+- [x] i18n contract (per-module `register()`, no shared dictionary file — several agents edit these in parallel)
+- [x] org view + signal sliders + sweep, data view + export, guided run
+
+### M4-T1 — i18n core + convert existing UI (Sonnet author) [BLOCKS T2-T4]
+- [ ] `i18n.js` per §1.4; KO/EN control in the status bar
+- [ ] every existing screen string converted; **inline "(한국어)" glosses removed** — superseded by the toggle
+- [ ] dataset values (org/branch/method/target/facility id+kind/directive) stay English in both languages
+
+### M4-T2 — organisations view + signal sliders + sweep (Sonnet author)
+- [ ] per-org editable form, stale-state banner, reset to defaults, preview map (§2.1)
+- [ ] signal sliders incl. the new noise-ratio slider (§2.2)
+- [ ] sweep at 6 strengths plotting M2 recovered fraction + M3 top-1 against their floors, single seed, labelled as such (§2.3)
+
+### M4-T3 — data view + export (Sonnet author)
+- [ ] sortable/filterable event table, row count + filter summary (§3)
+- [ ] separate `events.csv` and `ground_truth.json` exports — no combined export, by design
+
+### M4-T4 — guided first run (Sonnet author)
+- [ ] four anchored steps, dismissible, once-only via localStorage, restart affordance (§4)
+
+### M4-T5 — architect final review (Opus)
+- [ ] cross-review, live run, screenshots in both languages, DEVLOG, README, commit
+
+## Resume notes (M4)
+
+T1 blocks T2-T4 (they all call `t()`). After T1 lands the other three are independent and can run in parallel —
+they touch different view files and each registers its own strings, so there is no shared dictionary to conflict on.
+Always re-verify with `node phase2/app/js/_analysis_selftest.mjs` and `node phase2/app/js/_inference_selftest.mjs`.
