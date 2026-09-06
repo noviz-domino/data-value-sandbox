@@ -190,7 +190,7 @@ display and unfit as a detection statistic — see §5.3.
 ### 5.3 Evaluation — `evaluateInference(...)`
 
 ```js
-evaluateInference({ events, facilities, campaigns, days, seed, seeds = 5 })
+evaluateInference({ simulateFn, seed, seeds = 5 })
 // -> { runs: { P:{...}, PE:{...}, PEC:{...} }, campaignsEvaluated, meanCandidatesInScope }
 ```
 
@@ -220,8 +220,23 @@ z = (topScore - mean(scores)) / stdev(scores)      // 0 if stdev is 0 or fewer t
 `z` asks how far the leader stands out from its own peer group. It is scale-free, bounded by
 `sqrt(n-1)`, and does not saturate. Then:
 
-1. Draw **40 seeded control windows** per seed: centre on a random facility, radius 160 km, a random
-   80-day span, rejecting any window that overlaps a real campaign in both space (within 160 km) and time.
+1. Draw **40 seeded control windows** per seed, built by **the same construction as campaign windows**:
+   pick a random 80-day span; pick a random background event (one in no campaign) inside it; take the
+   **12 background events nearest that event** within the span and use their **centroid** as the scope
+   centre; radius 160 km. Reject any window that overlaps a real campaign in both space (within 160 km of
+   that campaign's centroid) and time.
+
+   **Do not centre control windows on a facility.** That was the earlier draft and it made the comparison
+   unfair: a facility sitting at the exact centre of its own scope, surrounded by the background clustering
+   §1.1 deliberately puts near facilities, gets a standout score no off-centre true target can match. The
+   measured consequence was a control-`z` distribution sitting *above* the campaign-`z` distribution for
+   every feature set (control p50 1.89 vs campaign p50 1.37–1.76), which made the 10%-FAR bar unreachable
+   by construction rather than by any weakness of the method. Positive and negative windows must be drawn
+   by the same rule and differ only in whether a campaign is present.
+
+   Report **mean events in scope for control and campaign windows side by side**. If they differ by more
+   than ~20%, the two window types are still not comparable and the detection number is not trustworthy —
+   say so rather than reporting it.
 2. Pool the control windows' `z` values; the **90th percentile** is the operating threshold — the point
    at which false alarms are held to **10%**.
 3. Report **detection rate at 10% false-alarm rate**: the share of true campaigns whose `z` clears that
