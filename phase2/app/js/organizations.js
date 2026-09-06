@@ -89,3 +89,130 @@ export const TARGETS = ["infrastructure", "government", "commercial", "transport
 
 /** 파벌별 최대 작전 반경(km). effectiveRadius는 baseRadius*directiveMult와 이 값 중 작은 쪽. SPEC §6.3. */
 export const RANGE = { ground: 80, naval: 250, air: 600 };
+
+// ── M4-T3(SPEC_M4 §3): 신호 강도(§12.1) ↔ 실제 파라미터 변환, 그리고 조직/지침 오버라이드 ──
+//
+// simulate()의 기본 호출 경로(overrides 없음)는 이 섹션의 어떤 함수도 거치지 않는다 — org-view가
+// 오버라이드를 만들 때만 쓰는 "순수 변환 함수" 모음이다. ORGS/DIRECTIVES 원본은 이 파일의 다른
+// 어떤 코드도 변형하지 않는다(참조 그대로 analysis.js의 오라클이 계속 가져다 쓴다).
+
+/** 선형 보간. a(t=0) -> b(t=1). */
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+/**
+ * SPEC_M4 §3.2 표의 세 점(strength=0/1.0/2.0)을 정확히 지나가는 구간별 선형(piecewise-linear)
+ * 보간. 표 자체가 0→1.0 구간과 1.0→2.0 구간의 기울기가 다르게 적혀 있어(예: DRYSTONE 계절성은
+ * 1.0→0.30, 2.0→0.15로 뒤 구간이 앞 구간 기울기의 절반), 매끈한 단일 공식 하나로는 세 값을
+ * 동시에 못 맞춘다. "표에 적힌 숫자와 정확히 일치"를 최우선으로 둔다.
+ * @param {number} strength - 0~2.0
+ * @param {number} at0 - strength=0일 때 값
+ * @param {number} at1 - strength=1.0(기본)일 때 값
+ * @param {number} at2 - strength=2.0일 때 값
+ */
+function piecewise(strength, at0, at1, at2) {
+  if (strength <= 1) return lerp(at0, at1, strength);
+  return lerp(at1, at2, strength - 1);
+}
+
+/** TIDEBREAK 표류 속도(km/day). §3.2: 0=정지, 1.0=0.5(기본), 2.0=1.0. 완전히 선형이라 구간이 필요 없다. */
+export function driftRateForStrength(strength) {
+  return 0.5 * strength;
+}
+
+/** DRYSTONE 계절 억제 배율. §3.2: 0=억제 없음(=1.0), 1.0=×0.30(기본), 2.0=×0.15. */
+export function seasonalMultiplierForStrength(strength) {
+  return piecewise(strength, 1, 0.3, 0.15);
+}
+
+/** DRYSTONE 표적 선호 비중(share). §3.2: 0=균등(share=0), 1.0=0.70(기본), 2.0=0.95. */
+export function targetPreferenceShareForStrength(strength) {
+  return piecewise(strength, 0, 0.7, 0.95);
+}
+
+// 지침 효과 크기(§3.2)는 radiusMult에만 건다 — 표가 예시로 든 것도 radius뿐이고(tempoMult는
+// 표에 없다), SUPPRESS의 radiusMult는 원래 1.0(효과 없음)이라 강도를 아무리 올려도 그대로 1.0이다.
+const DIRECTIVE_RADIUS_AT2 = { EXPAND: 2.0, CONSOLIDATE: 0.4, SUPPRESS: 1.0 };
+
+/**
+ * 지침 하나의 radiusMult를 강도(strength)에 맞게 다시 계산한다.
+ * strength=0 -> 1.0(효과 없음), strength=1.0 -> baseMult(원래 값 그대로), strength=2.0 ->
+ * DIRECTIVE_RADIUS_AT2[key](§3.2 표에 박힌 값. 모르는 키는 baseMult를 그대로 극값으로 취급).
+ */
+export function directiveRadiusMultForStrength(directiveKey, baseMult, strength) {
+  const at2 = DIRECTIVE_RADIUS_AT2[directiveKey] != null ? DIRECTIVE_RADIUS_AT2[directiveKey] : baseMult;
+  return piecewise(strength, 1, baseMult, at2);
+}
+
+/**
+ * 잡음비(noise ratio, §3.2) 슬라이더 -> 배경(background) baseTempo 배율.
+ * 표는 "전체 이벤트 중 배경 비중" s로 적혀 있다(0%/80%/95%). 배경:캠페인 비는 오즈비 s/(1-s)이고,
+ * 캠페인 이벤트 수는 배경 tempo와 거의 무관하게 결정되므로(campaigns.js는 조직 위치·시설 근접성만
+ * 보고 표적을 고른다 — 배경 물량과 무관), 이 오즈비를 strength=1.0 기준(s=0.80, 지금 커밋된 데이터셋의
+ * 실제 비중)으로 정규화해 배율로 쓰면 strength=1.0에서 정확히 1배가 된다. 실제 도달 비중은
+ * rejection sampling 특성상 근사치다(정확한 캘리브레이션이 아니라 "방향과 크기가 맞는" 조작 변수).
+ * @param {number} strength
+ * @returns {number} baseTempo에 곱할 배율. strength=0이면 0(배경 완전 제거).
+ */
+export function noiseTempoMultiplierForStrength(strength) {
+  const share = piecewise(strength, 0, 0.8, 0.95);
+  if (share <= 0) return 0;
+  const odds = share / (1 - share);
+  const baseOdds = 0.8 / 0.2; // strength=1.0 기준(=4) — 여기로 나눠야 1.0에서 배율이 1이 된다.
+  return odds / baseOdds;
+}
+
+/**
+ * ORGS를 깊은 복사한 "편집용 초안(draft)" 배열을 만든다. 폼(§3.1)이 이 배열을 자유롭게 뜯어고쳐도
+ * 원본 ORGS(analysis.js 오라클이 참조로 그대로 쓰는 배열)는 절대 건드리지 않는다.
+ * @returns {object[]}
+ */
+export function cloneDefaultOrgs() {
+  return ORGS.map((o) => ({
+    ...o,
+    base: [...o.base],
+    branches: o.branches.map((b) => ({ ...b })),
+    seasonal: o.seasonal ? { ...o.seasonal, months: [...o.seasonal.months] } : null,
+    targetPreference: o.targetPreference ? { ...o.targetPreference } : null,
+  }));
+}
+
+/**
+ * simulate()가 바로 소비할 수 있는 ORGS 모양의 배열을 만든다: baseOrgs(보통 ORGS) 위에
+ * orgOverrides(키별 부분 필드 오버라이드)를 얹는다. orgOverrides가 없으면 baseOrgs 참조를
+ * 그대로 돌려준다 — simulate()의 기본 호출 경로가 byte-identical을 유지하는 핵심 축이다.
+ * @param {object[]} baseOrgs
+ * @param {Record<string, object>|null} orgOverrides
+ * @returns {object[]}
+ */
+export function applyOrgOverrides(baseOrgs, orgOverrides) {
+  if (!orgOverrides) return baseOrgs;
+  return baseOrgs.map((org) => {
+    const o = orgOverrides[org.key];
+    if (!o) return org;
+    return {
+      ...org,
+      ...o,
+      branches: o.branches || org.branches,
+      seasonal: o.seasonal !== undefined ? o.seasonal : org.seasonal,
+      targetPreference: o.targetPreference !== undefined ? o.targetPreference : org.targetPreference,
+    };
+  });
+}
+
+/**
+ * DIRECTIVES 모양의 오브젝트를 만든다: baseDirectives(보통 DIRECTIVES) 위에 directiveOverrides
+ * (키별 부분 필드 오버라이드)를 얹는다. 없으면 baseDirectives 참조를 그대로 돌려준다.
+ * @param {object} baseDirectives
+ * @param {Record<string, object>|null} directiveOverrides
+ * @returns {object}
+ */
+export function applyDirectiveOverrides(baseDirectives, directiveOverrides) {
+  if (!directiveOverrides) return baseDirectives;
+  const out = {};
+  for (const key in baseDirectives) {
+    out[key] = directiveOverrides[key] ? { ...baseDirectives[key], ...directiveOverrides[key] } : baseDirectives[key];
+  }
+  return out;
+}

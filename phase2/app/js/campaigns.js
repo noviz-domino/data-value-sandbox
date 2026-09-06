@@ -49,7 +49,10 @@ const TARGET_WEIGHTS_BY_KIND = {
  * @returns {[number, number]} [위도, 경도]
  */
 export function orgCenterOnDay(org, day) {
-  return org.driftKmPerDay ? dest(org.base[0], org.base[1], 90, org.driftKmPerDay * day) : org.base;
+  // driftBearing: M4-T3(§3.1) 조직 편집 폼이 표류 방위각을 오버라이드할 수 있게 하는 필드.
+  // 없으면(기본 ORGS 전부) simulation.js와 동일하게 90(정동)으로 떨어진다.
+  const bearing = org.driftBearing != null ? org.driftBearing : 90;
+  return org.driftKmPerDay ? dest(org.base[0], org.base[1], bearing, org.driftKmPerDay * day) : org.base;
 }
 
 /**

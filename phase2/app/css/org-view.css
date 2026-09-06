@@ -1,10 +1,85 @@
-/* 조직(ORG) 뷰 전용 스타일 (SPEC_M4 §3). 이 뷰를 구현하는 에이전트만 이 파일을 건드린다 —
-   style.css/다른 view CSS와 접촉면을 만들지 않기 위해 일부러 빈 파일로 시작한다.
-   색상은 phase2/app/js/palette.js / css/style.css의 :root 커스텀 프로퍼티만 쓸 것. */
+/* 조직(ORG) 뷰 전용 스타일 (M4-T3, SPEC_M4 §3). 색은 palette.js/style.css :root 변수만 쓴다
+   (SPEC_M4 §6 제약) — 이 파일에 새 HEX 값을 절대 적지 않는다. */
 
-.org-view-stub-sub {
-  margin-top: 6px;
-  font-family: var(--f-mono);
-  font-size: 11px;
-  color: var(--ink-mute);
+.org-view{padding:16px;display:flex;flex-direction:column;gap:16px;font-size:13px}
+
+.org-view-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.org-view-title{font-family:var(--f-cond);font-weight:600;font-size:15px;letter-spacing:.04em;color:var(--ink)}
+.org-view-subtitle{color:var(--ink-mute);font-size:12px;margin-top:2px;max-width:640px}
+.org-view-actions{display:flex;gap:8px;flex-shrink:0}
+.org-view-actions button,
+.org-sweep-row button{
+  background:var(--riser);border:1px solid var(--hair-lit);color:var(--ink);
+  font-family:var(--f-cond);font-weight:600;font-size:11px;letter-spacing:.06em;
+  padding:7px 12px;cursor:pointer;border-radius:4px}
+.org-view-actions button:hover,.org-sweep-row button:hover{border-color:var(--nw);color:var(--nw)}
+.org-view-actions button:disabled,.org-sweep-row button:disabled{opacity:.5;cursor:default;color:var(--ink-mute);border-color:var(--hair)}
+.org-run-btn{background:var(--nw);color:var(--void);border-color:var(--nw)}
+.org-run-btn:hover{filter:brightness(1.1);color:var(--void)}
+
+/* 스테일(재실행 필요) 배지 — 경고색(--dir-suppress 계열이 아니라 amber 계열 없음) 대신
+   ink-dim 배경 위 강한 테두리로 "무시할 수 없는 상태"를 표현한다. 장식이 아니라 상태 신호다. */
+.org-stale-banner{background:var(--riser);border:1px solid var(--tb);color:var(--tb);
+  padding:8px 12px;font-size:12px;border-radius:4px;font-weight:600}
+.org-run-note{color:var(--ink-mute);font-size:11px}
+
+.org-run-result{background:var(--deck);border:1px solid var(--hair);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.7}
+.org-run-title{font-family:var(--f-cond);font-weight:600;letter-spacing:.05em;color:var(--ink);margin-bottom:2px}
+.org-run-timing{color:var(--ink-mute);font-family:var(--f-mono);font-size:11px}
+.org-run-error{background:var(--riser);border:1px solid var(--ds);color:var(--ds);padding:8px 12px;border-radius:4px;font-size:12px}
+
+.org-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.org-card{background:var(--deck);border:1px solid var(--hair);border-radius:6px;padding:12px;
+  border-left:3px solid var(--org-color)}
+.org-card-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.org-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.org-name{font-family:var(--f-cond);font-weight:600;letter-spacing:.06em;color:var(--ink);font-size:13px}
+.org-card-body{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+.org-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.org-field>span:first-child{color:var(--ink-mute);font-size:11px;font-family:var(--f-cond);letter-spacing:.04em}
+
+.org-inline{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.org-inline>span{color:var(--ink-dim);font-size:11px}
+.org-inline-group{display:flex;gap:10px;flex-wrap:wrap}
+.org-inline-note{color:var(--ink-mute);font-size:11px;font-style:italic}
+
+.org-field input[type="number"],
+.org-field select{
+  background:var(--riser);border:1px solid var(--hair-lit);color:var(--ink);
+  font-family:var(--f-mono);font-size:12px;padding:4px 6px;border-radius:4px;width:76px}
+.org-field select{width:auto}
+.org-field input[type="number"]:focus,.org-field select:focus{outline:1px solid var(--nw)}
+.org-field input[type="checkbox"]{accent-color:var(--nw)}
+
+.org-months{display:flex;gap:3px;flex-wrap:wrap;margin-top:4px}
+.org-month{display:flex;flex-direction:column;align-items:center;font-size:9px;color:var(--ink-mute);
+  border:1px solid var(--hair);border-radius:3px;padding:2px 4px;cursor:pointer}
+.org-month.on{color:var(--ink);border-color:var(--hair-lit);background:var(--riser)}
+.org-month input{margin:0 0 2px 0}
+
+.org-preview{background:var(--void);border:1px solid var(--hair);border-radius:4px;overflow:hidden}
+.org-preview svg{display:block;width:100%;height:auto}
+
+.org-signals{background:var(--deck);border:1px solid var(--hair);border-radius:6px;padding:14px;
+  display:flex;flex-direction:column;gap:14px}
+.org-signals-head{margin-bottom:2px}
+
+.org-sig-row{border-top:1px solid var(--hair);padding-top:12px}
+.org-sig-row:first-of-type{border-top:none;padding-top:0}
+.org-sig-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.org-sig-name{font-family:var(--f-cond);font-weight:600;letter-spacing:.04em;color:var(--ink);font-size:12px}
+.org-sig-readout{font-family:var(--f-mono);color:var(--nw);font-size:12px}
+.org-sig-row input[type="range"]{width:100%;accent-color:var(--nw)}
+
+.org-sweep-row{margin-top:8px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.org-sweep-chart{width:100%}
+.org-sweep-chart svg{width:100%;max-width:480px;height:auto}
+.org-sweep-legend{display:flex;gap:14px;font-size:11px;color:var(--ink-dim)}
+.org-sweep-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.org-sweep-note{color:var(--ink-mute);font-size:10px}
+.org-sweep-singleseed{color:var(--tb);font-weight:600}
+
+@media (max-width:900px){
+  .org-card-body{grid-template-columns:1fr}
 }

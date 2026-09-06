@@ -53,28 +53,42 @@ export function sampleExponential(rng, mean) {
  * @param {boolean} [params.withCampaigns] - true면 배경 이벤트 위에 캠페인(작전) 이벤트를 얹는다. SPEC_M3 §4.1.
  *   기본값 false이며, false일 때는 아래 코드가 캠페인 관련 rng를 전혀 소비하지 않으므로
  *   M2 시절과 byte-for-byte 동일한 결과가 나온다(하위호환 요건).
+ * @param {{orgs?: object[], directives?: object, noiseMultiplier?: number}|null} [params.overrides] -
+ *   M4-T3(SPEC_M4 §3.2). 셋 다 없으면(=undefined/null, 기본값) 아래 코드는 ORGS/DIRECTIVES
+ *   원본 참조와 배율 1을 그대로 쓰므로 분기·연산이 단 하나도 늘지 않는다 — 이게 "오버라이드를
+ *   추가해도 기본 호출 경로는 byte-identical"이라는 하위호환 요건을 지키는 방법이다.
+ *   orgs/directives는 organizations.js의 applyOrgOverrides/applyDirectiveOverrides가 만든
+ *   ORGS/DIRECTIVES "모양"의 대체 배열·오브젝트. noiseMultiplier는 모든 조직의 baseTempo에
+ *   똑같이 곱해지는 잡음비(noise ratio) 배율(§3.2, organizations.js의
+ *   noiseTempoMultiplierForStrength가 만든다) — 기본 1.
  * @returns {{ events: object[], periods: object[], byDay: number[][], days: number, startDate: string, campaigns?: object[], facilities?: object[] }}
  */
-export function simulate({ seed, landTest, facilities = null, withCampaigns = false }) {
+export function simulate({ seed, landTest, facilities = null, withCampaigns = false, overrides = null }) {
   const rng = mulberry32(seed);
   const { isLand, isCoastal } = landTest;
 
+  // overrides가 없으면(기본 호출) orgs===ORGS, directives===DIRECTIVES, noiseMultiplier===1 —
+  // 아래 루프는 이전과 완전히 같은 값·같은 순서로 rng를 소비한다.
+  const orgs = overrides && overrides.orgs ? overrides.orgs : ORGS;
+  const directives = overrides && overrides.directives ? overrides.directives : DIRECTIVES;
+  const noiseMultiplier = overrides && overrides.noiseMultiplier != null ? overrides.noiseMultiplier : 1;
+
   const events = [];
   const periods = []; // 완결된 지침(directive) 구간들 {org, directive, startDay, endDay}
-  const byDay = Array.from({ length: DAYS }, () => ORGS.map(() => 0));
+  const byDay = Array.from({ length: DAYS }, () => orgs.map(() => 0));
 
   // 조직별 커맨드 레이어 상태: 현재 지침, 지침 만료일, 현재 지침이 시작된 날짜
-  const state = ORGS.map(() => ({ directive: null, expiry: 0, periodStart: 0 }));
+  const state = orgs.map(() => ({ directive: null, expiry: 0, periodStart: 0 }));
 
-  const directiveKeys = Object.keys(DIRECTIVES); // ["EXPAND","CONSOLIDATE","SUPPRESS"]
-  const directiveWeights = directiveKeys.map((k) => DIRECTIVES[k].weight);
+  const directiveKeys = Object.keys(directives); // ["EXPAND","CONSOLIDATE","SUPPRESS"]
+  const directiveWeights = directiveKeys.map((k) => directives[k].weight);
 
   let nextEventId = 1;
 
   for (let day = 0; day < DAYS; day++) {
     const month = monthOf(day);
 
-    ORGS.forEach((org, orgIdx) => {
+    orgs.forEach((org, orgIdx) => {
       const s = state[orgIdx];
 
       // 1. COMMAND LAYER — 지침 만료일이 지났으면 새 지침을 가중 랜덤으로 뽑는다.
@@ -87,11 +101,14 @@ export function simulate({ seed, landTest, facilities = null, withCampaigns = fa
         // 다음 지침까지 60~180일 사이 랜덤. Math.floor(rng()*121)은 0~120 정수이므로 60을 더하면 60~180.
         s.expiry = day + 60 + Math.floor(rng() * 121);
       }
-      const directive = DIRECTIVES[s.directive];
+      const directive = directives[s.directive];
 
       // 2. BRANCH LAYER — 이동(drift)하는 조직은 오늘의 실제 중심 좌표를 구한다.
+      // driftBearing: 조직 편집 폼(§3.1)이 "표류 방위각"을 오버라이드할 수 있게 필드를 두되,
+      // 없으면(기본 ORGS 전부가 그렇다) 원래 하드코딩값인 90(정동)으로 그대로 떨어진다.
+      const bearing = org.driftBearing != null ? org.driftBearing : 90;
       const center = org.driftKmPerDay
-        ? dest(org.base[0], org.base[1], 90, org.driftKmPerDay * day)
+        ? dest(org.base[0], org.base[1], bearing, org.driftKmPerDay * day)
         : org.base;
       // 계절 억제: DRYSTONE만 12~2월에 tempo가 줄어든다.
       const seasonalFactor =
@@ -100,16 +117,18 @@ export function simulate({ seed, landTest, facilities = null, withCampaigns = fa
       // 3. UNIT LAYER — 조직이 보유한 각 파벌(branch)마다 오늘 사건이 발생하는지 판정한다.
       org.branches.forEach((branchDef) => {
         const branch = branchDef.type;
-        // effectiveTempo = baseTempo * directiveMult * seasonalFactor, 파벌별 비중(share)만큼 배분.
-        // share는 한 조직 안에서 합이 1이므로(예: TIDEBREAK ground 0.6 + naval 0.4) 조직당 총
-        // 기대 이벤트 수는 균등 배분(1/파벌수)과 동일하고, 파벌 간 비중만 실제로 반영된다.
-        // 이렇게 해야 오라클(analysis.js)이 읽는 share가 실제 생성 규칙과 일치해 ceiling이
-        // 근사가 아닌 참 상한이 된다.
+        // effectiveTempo = baseTempo * noiseMultiplier * directiveMult * seasonalFactor, 파벌별
+        // 비중(share)만큼 배분. share는 한 조직 안에서 합이 1이므로(예: TIDEBREAK ground 0.6 +
+        // naval 0.4) 조직당 총 기대 이벤트 수는 균등 배분(1/파벌수)과 동일하고, 파벌 간 비중만
+        // 실제로 반영된다. 이렇게 해야 오라클(analysis.js)이 읽는 share가 실제 생성 규칙과
+        // 일치해 ceiling이 근사가 아닌 참 상한이 된다.
+        // noiseMultiplier는 기본 1(§3.2 잡음비 슬라이더 오버라이드 전용 — 기본 호출에서는 항상 1이라
+        // 곱해도 값이 그대로다).
         // 마지막 *1.9는 프로토타입에서 그대로 가져온 튜닝 상수:
         // 5년 합계 이벤트 수가 목표 1500~3000 구간에 들어오도록 40회 rejection sampling으로 인한
         // 실패율(특히 naval/좁은 반경)을 보정한다.
         const tempo =
-          org.baseTempo * directive.tempoMult * seasonalFactor * branchDef.share * 1.9;
+          org.baseTempo * noiseMultiplier * directive.tempoMult * seasonalFactor * branchDef.share * 1.9;
         if (rng() >= tempo) return; // 오늘 이 파벌은 사건 없음
 
         const effectiveRadius = Math.min(RANGE[branch], org.baseRadius * directive.radiusMult);
@@ -161,7 +180,7 @@ export function simulate({ seed, landTest, facilities = null, withCampaigns = fa
   // 시뮬레이션이 끝난 시점에도 아직 열려 있는 지침 구간을 마감한다.
   state.forEach((s, i) => {
     if (s.directive) {
-      periods.push({ org: ORGS[i].key, directive: s.directive, startDay: s.periodStart, endDay: DAYS });
+      periods.push({ org: orgs[i].key, directive: s.directive, startDay: s.periodStart, endDay: DAYS });
     }
   });
 
@@ -181,7 +200,7 @@ export function simulate({ seed, landTest, facilities = null, withCampaigns = fa
   const campaigns = generateCampaigns({
     rng,
     isLand,
-    orgs: ORGS,
+    orgs,
     facilities: facilityList,
     totalDays: DAYS,
     events, // in-place push
