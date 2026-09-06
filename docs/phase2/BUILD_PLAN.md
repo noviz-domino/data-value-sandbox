@@ -210,22 +210,33 @@ Spec: [SPEC_M3.md](SPEC_M3.md). Ground-truth separation (§3) applies to every t
 - [x] `phase2/app/data/facilities.json` — 160 candidates (102 power, 33 airport, 25 port), anonymised ids, 10.6 KB
 - [x] SPEC_M3.md with locked numbers (ring 28→4 km, 100-day cadence, 12 events/campaign, 20/80 split)
 
-### M3-T1 — simulator campaigns (Sonnet author → reviewer) [correctness-critical]
-- [ ] `campaigns.js` + `simulate()` gains `{facilities, withCampaigns}` per SPEC_M3 §4
-- [ ] `withCampaigns:false` byte-identical to today; M2 self-test still passes
-- [ ] ground truth `campaigns[]`, 20% signal share, no event within 1.5 km of its target
+### M3-T1 — simulator campaigns (Sonnet author) [DONE — committed 41d310f]
+- [x] `campaigns.js` + `simulate({facilities, withCampaigns})` per SPEC_M3 §4
+- [x] `withCampaigns:false` identical (2602 events); M2 ablation byte-identical
+- [x] ground truth `campaigns[]` disjoint, 20.2% share, min target distance 3.01 km
+> Author found the root cause of an initial 16% share: the generator's terrain model (ne_110m)
+> resolves only 69 of 160 facilities as land, so tight 4-28 km rings around the other 91 kept
+> failing placement (6 campaigns got zero events). Architect fix: restrict candidates to the 69
+> the generator itself resolves. Mixing resolutions was rejected — background on 110m + campaigns
+> on 50m would make "event on a small island" imply "campaign event", inflating every score.
 
-### M3-T2 — inference engine `inference.js` (Sonnet author → reviewer) [correctness-critical]
-- [ ] `projectForInference` / `scopeEvents` / `scopeFacilities` / `inferTargets` / `evaluateInference` per §5
-- [ ] `_inference_selftest.mjs` — 8 assertions incl. the P→PE→PEC ladder and false-alarm rate
+### M3-T2 — inference engine `inference.js` (Sonnet author) [scoring DONE, evaluation being rebuilt]
+- [x] `projectForInference` / `scopeEvents` / `scopeFacilities` / `inferTargets` — ring kernel verified
+      on isolated fixtures (peak at 14 km, on-facility penalised, R≈0 spread vs R≈1 one-sided)
+- [ ] **M3-T2b (in flight):** evaluation rebuilt to the rewritten §5.3 — 160 km scope, scope-relative
+      floor, detection@10%FAR instead of a fixed 0.35 cut, 5-seed pooling
+> Architect error caught by measurement: at 60 km only 3.9 candidates are in scope, so the task was
+> 4-way multiple choice scored against a global 1-in-69 floor. Same class of mistake as phase 1's
+> unbaselined 68%. Honest floor is ~10.9%, not 1.45%; top5 is vacuous (floor ~55%).
 
-### M3-T3 — UI: time window + scope selection + results panel (Sonnet author) [live-validated]
+### M3-T3 — UI: time window + scope selection + results panel (Sonnet author) [IN FLIGHT]
 - [ ] timeline bar → time window control, default last 100 days (§6.1)
 - [ ] `queryEvents({scope, window})` seam so views never index the array (§6.2)
 - [ ] map scope circle (click-drag + numeric radius), results panel with floor and warnings (§6.3–6.4)
 
-### M3-T4 — visual language 6:3:1 (Sonnet author) [independent of T1–T3]
-- [ ] CSS custom properties in one place, deep blue-grey ground, one lead accent, WCAG AA text (§7)
+### M3-T4 — visual language 6:3:1 (Sonnet author) [DONE — committed 41d310f]
+- [x] `palette.js` + `:root` custom properties; all literals centralised out of map/main/timeline/analysis-view
+- [x] measured contrast: body 12.7:1 (void) / 11.8:1 (panel), dim 7.1:1, accent 9.8:1, border 3.7:1 — all pass
 
 ### M3-T5 — architect final review (Opus)
 - [ ] live run, screenshots, DEVLOG entry, commit, report at milestone boundary
