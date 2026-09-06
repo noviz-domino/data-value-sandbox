@@ -234,9 +234,22 @@ z = (topScore - mean(scores)) / stdev(scores)      // 0 if stdev is 0 or fewer t
    by construction rather than by any weakness of the method. Positive and negative windows must be drawn
    by the same rule and differ only in whether a campaign is present.
 
-   Report **mean events in scope for control and campaign windows side by side**. If they differ by more
-   than ~20%, the two window types are still not comparable and the detection number is not trustworthy —
-   say so rather than reporting it.
+   **Density-match the controls.** Even with matched construction, campaign windows measured 81.2 events
+   in scope against controls' 32.0 — a 2.5x gap. A detector fed that pair can score well by counting
+   events and never looking at geometry, so an unmatched detection rate does not measure what it claims.
+
+   For each campaign window holding `N` events, rejection-sample control windows (up to 200 draws) until
+   one holds between `0.8N` and `1.2N` events, and pair them. Report the matched means side by side and
+   the share of campaigns for which no match was found.
+
+   This split makes the result interpretable either way, and both outcomes are worth reporting:
+   - detection **survives** matching → the ring geometry carries information beyond mere volume;
+   - detection **collapses** to near the false-alarm rate → the method was largely counting events, and
+     the honest headline is that campaigns raise local activity but their *shape* adds little.
+
+   If matching fails for many campaigns because no campaign-free region is ever that busy, that is itself
+   the finding — campaigns are detectable by volume alone — and it must be stated rather than worked
+   around. Report the unmatched numbers too, clearly labelled as volume-confounded.
 2. Pool the control windows' `z` values; the **90th percentile** is the operating threshold — the point
    at which false alarms are held to **10%**.
 3. Report **detection rate at 10% false-alarm rate**: the share of true campaigns whose `z` clears that
