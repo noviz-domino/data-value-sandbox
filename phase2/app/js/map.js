@@ -146,8 +146,12 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
       selectedFacilityId, // 결과 패널에서 선택된 시설 id | null
       supportingEvents, // 선택된 후보를 뒷받침하는 "in-band" 이벤트(좌표만, org 없음) | undefined
     } = frame;
-    // reveal은 M1에서 지도 레이어에 영향을 주지 않는다 — 진짜 답 공개 시각화는 타임라인/카드가 맡는다.
-    // 시그니처만 유지해두고(향후 마일스톤 대비), 여기서는 아무 동작도 하지 않는다.
+    // M4-T2 (SPEC_M4 §2 항목1): reveal이 이 지도가 그리는 "정답지 레이어"를 실제로 가른다.
+    // org 기본 위치 마커·콜사인 라벨·작전 반경 링·TIDEBREAK 궤적, 그리고 사건 점의 "조직별 색"은
+    // 전부 지휘 계층(command layer) 정보다 — reveal이 꺼지면 지도 어디에도 나타나지 않는다.
+    // 후보 시설 마커(candidate-facilities)와 스코프 원은 답이 아니라 "질문의 대상/도구"이므로
+    // reveal과 무관하게 항상 그린다.
+    const reveal = !!frame.reveal;
 
     const isVisible = (orgKey) => !visibleOrgs || visibleOrgs.has(orgKey);
     const colorOf = (orgKey) => ORG_RGB[orgKey] || [200, 200, 200];
@@ -199,7 +203,9 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
       vc.data = visibleEvents;
     }
 
-    // ── 2. 누적 이벤트 — 2px 남짓, 조직색, 낮은 불투명도(0.35) ──────────────────
+    // ── 2. 누적 이벤트 — 2px 남짓, 낮은 불투명도(0.35) ──────────────────────────
+    // M4-T2: reveal이 꺼지면 org와 무관한 중립색(RGB.evt) 하나만 쓴다 — "누가 저질렀는가"는
+    // 지휘 계층 정보라 기본 화면에 그리지 않는다. reveal이 켜졌을 때만 조직색으로 되돌린다.
     layers.push(
       new ScatterplotLayer({
         id: "events-accum",
@@ -207,12 +213,14 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
         getPosition: (d) => [d.lon, d.lat],
         radiusUnits: "pixels",
         getRadius: 1, // 반지름 1px ≈ 지름 2px
-        getFillColor: (d) => [...colorOf(d.org), 90], // 90/255 ≈ 0.35
+        getFillColor: (d) => [...(reveal ? colorOf(d.org) : RGB.evt), 90], // 90/255 ≈ 0.35
         pickable: true,
+        updateTriggers: { getFillColor: reveal },
       })
     );
 
     // ── 3. 최근 이벤트(≤30일) — 가산 블렌딩 글로우. 최신일수록 크고 진하게 ─────────
+    // M4-T2: 위 events-accum과 같은 이유로, reveal이 꺼지면 글로우도 중립색으로 그린다.
     // 캐시: visibleEvents identity(위에서 캐시 히트면 바로 이전 배열)와 day가 그대로면 재사용.
     const rc = derivedCache.recentEvents;
     let recentEvents;
@@ -236,9 +244,10 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
         },
         getFillColor: (d) => {
           const f = 1 - (day - d.day) / 30;
-          return [...colorOf(d.org), Math.round(60 + f * 170)];
+          return [...(reveal ? colorOf(d.org) : RGB.evt), Math.round(60 + f * 170)];
         },
         pickable: true,
+        updateTriggers: { getFillColor: reveal },
         // 가산(additive) 블렌딩: SRC_ALPHA(770) / ONE(1). 여러 개의 글로우가 겹치면
         // 알파를 곱하는 대신 더해서, 사건이 밀집한 곳이 실제로 더 밝게 빛나 보인다.
         parameters: {
@@ -271,80 +280,86 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
       oc.data = orgFrames;
     }
 
-    // ── 4. 조직 기본 위치 마커 (색 채움 원 + 얇은 테두리) ──────────────────────
-    layers.push(
-      new ScatterplotLayer({
-        id: "org-markers",
-        data: orgFrames,
-        getPosition: (d) => [d.lon, d.lat],
-        radiusUnits: "pixels",
-        getRadius: 6,
-        getFillColor: (d) => colorOf(d.org.key),
-        stroked: true,
-        getLineColor: RGB.void, // --void — 배경과 대비되는 얇은 테두리
-        lineWidthMinPixels: 1,
-        pickable: true,
-      })
-    );
-
-    // ── 5. 콜사인 라벨 (org.key, 마커 오른쪽) ─────────────────────────────────
-    layers.push(
-      new TextLayer({
-        id: "org-labels",
-        data: orgFrames,
-        getPosition: (d) => [d.lon, d.lat],
-        getText: (d) => d.org.key,
-        getColor: (d) => colorOf(d.org.key),
-        getSize: 11,
-        fontFamily: '"IBM Plex Sans Condensed", system-ui, sans-serif',
-        fontWeight: 600,
-        getPixelOffset: [16, 0],
-        getTextAnchor: "start",
-        getAlignmentBaseline: "center",
-        pickable: false,
-      })
-    );
-
-    // ── 6. 작전 반경 링 — 현재 지침의 배율이 적용된 반경, 테두리만 그림 ──────────
-    // 점선 처리는 nice-to-have였으나, deck.gl UMD 번들에 PathStyleExtension이 항상
-    // 포함되는지 버전마다 보장할 수 없어 신뢰성을 위해 실선(옅은 알파)으로 근사했다.
-    layers.push(
-      new ScatterplotLayer({
-        id: "org-radius",
-        data: orgFrames,
-        getPosition: (d) => [d.lon, d.lat],
-        stroked: true,
-        filled: false,
-        radiusUnits: "meters",
-        getRadius: (d) => d.radiusKm * 1000,
-        getLineColor: (d) => [...colorOf(d.org.key), 80], // ≈0.32 알파, 프로토타입과 동일 수준
-        lineWidthUnits: "pixels",
-        getLineWidth: 1,
-        pickable: false,
-      })
-    );
-
-    // ── 7. TIDEBREAK 궤적 — day 0 기준 위치에서 오늘 위치까지의 이동 경로 ─────────
-    const tidebreak = orgFrames.find((d) => d.org.key === "TIDEBREAK" && d.org.driftKmPerDay);
-    if (tidebreak) {
+    // ── 4~7. 조직 기본 위치 마커·콜사인 라벨·작전 반경 링·TIDEBREAK 궤적 ─────────────
+    // M4-T2 (SPEC_M4 §2 항목1): 이 넷은 전부 "지휘 계층" 정보라 reveal이 켜졌을 때만 그린다.
+    // reveal이 꺼져 있으면 이 레이어들은 아예 layers 배열에 들어가지 않는다 — deck.gl 레이어
+    // props를 숨기는 게 아니라 통째로 생략하므로, "css로 안 보이게만 했다"류의 우회가 없다.
+    if (reveal) {
+      // ── 4. 조직 기본 위치 마커 (색 채움 원 + 얇은 테두리) ────────────────────
       layers.push(
-        new PathLayer({
-          id: "tidebreak-trail",
-          data: [
-            {
-              path: [
-                [tidebreak.org.base[1], tidebreak.org.base[0]], // [lon, lat] — day 0
-                [tidebreak.lon, tidebreak.lat], // 오늘
-              ],
-            },
-          ],
-          getPath: (d) => d.path,
-          getColor: [...colorOf("TIDEBREAK"), 140],
-          widthUnits: "pixels",
-          getWidth: 1.5,
+        new ScatterplotLayer({
+          id: "org-markers",
+          data: orgFrames,
+          getPosition: (d) => [d.lon, d.lat],
+          radiusUnits: "pixels",
+          getRadius: 6,
+          getFillColor: (d) => colorOf(d.org.key),
+          stroked: true,
+          getLineColor: RGB.void, // --void — 배경과 대비되는 얇은 테두리
+          lineWidthMinPixels: 1,
+          pickable: true,
+        })
+      );
+
+      // ── 5. 콜사인 라벨 (org.key, 마커 오른쪽) ───────────────────────────────
+      layers.push(
+        new TextLayer({
+          id: "org-labels",
+          data: orgFrames,
+          getPosition: (d) => [d.lon, d.lat],
+          getText: (d) => d.org.key,
+          getColor: (d) => colorOf(d.org.key),
+          getSize: 11,
+          fontFamily: '"IBM Plex Sans Condensed", system-ui, sans-serif',
+          fontWeight: 600,
+          getPixelOffset: [16, 0],
+          getTextAnchor: "start",
+          getAlignmentBaseline: "center",
           pickable: false,
         })
       );
+
+      // ── 6. 작전 반경 링 — 현재 지침의 배율이 적용된 반경, 테두리만 그림 ──────
+      // 점선 처리는 nice-to-have였으나, deck.gl UMD 번들에 PathStyleExtension이 항상
+      // 포함되는지 버전마다 보장할 수 없어 신뢰성을 위해 실선(옅은 알파)으로 근사했다.
+      layers.push(
+        new ScatterplotLayer({
+          id: "org-radius",
+          data: orgFrames,
+          getPosition: (d) => [d.lon, d.lat],
+          stroked: true,
+          filled: false,
+          radiusUnits: "meters",
+          getRadius: (d) => d.radiusKm * 1000,
+          getLineColor: (d) => [...colorOf(d.org.key), 80], // ≈0.32 알파, 프로토타입과 동일 수준
+          lineWidthUnits: "pixels",
+          getLineWidth: 1,
+          pickable: false,
+        })
+      );
+
+      // ── 7. TIDEBREAK 궤적 — day 0 기준 위치에서 오늘 위치까지의 이동 경로 ────
+      const tidebreak = orgFrames.find((d) => d.org.key === "TIDEBREAK" && d.org.driftKmPerDay);
+      if (tidebreak) {
+        layers.push(
+          new PathLayer({
+            id: "tidebreak-trail",
+            data: [
+              {
+                path: [
+                  [tidebreak.org.base[1], tidebreak.org.base[0]], // [lon, lat] — day 0
+                  [tidebreak.lon, tidebreak.lat], // 오늘
+                ],
+              },
+            ],
+            getPath: (d) => d.path,
+            getColor: [...colorOf("TIDEBREAK"), 140],
+            widthUnits: "pixels",
+            getWidth: 1.5,
+            pickable: false,
+          })
+        );
+      }
     }
 
     // ── 8. 스코프 원(circle) — 확정본과 드래그 중 미리보기. 둘 다 조직색이 아니라 리드 악센트
@@ -435,6 +450,25 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
     return vp.unproject([x, y]);
   }
 
+  /**
+   * 지금 화면(container)에 실제로 보이는 위경도 사각형을 반환한다. scan.js의 그리드 스캔이
+   * "지금 화면"을 채울 격자를 만들 때 이 사각형이 필요하다(SPEC_M4 §2 항목4 "grid the current
+   * viewport"). unproject를 두 모서리(좌상단/우하단)에 그대로 재사용한다 — 새 API가 아니다.
+   * @returns {{west:number, east:number, south:number, north:number}}
+   */
+  function getViewportBounds() {
+    const width = container.clientWidth || 1;
+    const height = container.clientHeight || 1;
+    const [lon1, lat1] = unproject(0, 0); // 좌상단
+    const [lon2, lat2] = unproject(width, height); // 우하단
+    return {
+      west: Math.min(lon1, lon2),
+      east: Math.max(lon1, lon2),
+      south: Math.min(lat1, lat2),
+      north: Math.max(lat1, lat2),
+    };
+  }
+
   /** 카메라를 부분적으로 갱신한다 (예: 줌 프리셋 버튼). 전달하지 않은 필드는 현재 값을 유지. */
   function setView({ zoom, longitude, latitude } = {}) {
     viewState = {
@@ -460,5 +494,5 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
     lastFrame = null;
   }
 
-  return { setFrame, setView, getViewState, destroy, unproject };
+  return { setFrame, setView, getViewState, destroy, unproject, getViewportBounds };
 }

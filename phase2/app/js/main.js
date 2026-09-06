@@ -19,6 +19,9 @@ import { createResultsPanel } from "./results-panel.js";
 // 정답지 분리(ground truth separation, SPEC_M3 §3): 이 앱에서 추론 관련 함수를 부르는 곳은
 // 여기(main.js)뿐이다. inference.js 자체는 절대 손대지 않는다(다른 에이전트가 편집 중).
 import { projectForInference, scopeFacilities, inferTargets, evaluateInference } from "./inference.js";
+// 주변 스캔(scan, SPEC_M4 §2 항목4) — 스코프를 아직 안 골랐을 때 지금 화면을 격자로 훑는다.
+// 이 모듈도 inference.js의 순수 함수만 써서 정답지 분리 경계를 그대로 지킨다(scan.js 상단 주석 참고).
+import { computeScanGrid, runScan } from "./scan.js";
 // ── 조직 팔레트 ────────────────────────────────────────────────────────────
 // M3-T4부터는 palette.js가 유일한 색상 소스다(map.js/analysis-view.js와 공유). 카드/
 // 타임라인/피드가 지도와 다른 색을 쓰는 어긋남을 palette.js 하나로 없앤다.
@@ -282,6 +285,21 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   let selectedFacilityId = null;
   let inferenceFrame = {}; // map.setFrame에 매 프레임 합쳐 넣을 스코프/시설/강조 레이어 데이터
 
+  // ── M4-T2 상태 (SPEC_M4 §2): "스코프를 바꾸는 것"과 "실제로 추론을 돌리는 것"을 분리한다.
+  // mode는 결과 패널이 지금 뭘 보여줘야 하는지를 결정한다:
+  //   idle      — 아직 Analyze를 누르지 않음(또는 스코프/시간창이 바뀌어 이전 결과가 무효화됨)
+  //   analyzed  — Analyze(또는 스캔 결과 선택)로 실제 inferTargets 결과가 있음
+  //   scanning  — 주변 스캔(scan) 진행 중
+  //   scanned   — 주변 스캔 완료, 상위 10개 표시 중
+  let mode = "idle";
+  let lastAnalyze = null; // { ranked, eventCount, warnings, radiusKm, scopeCenter, win } | null
+  let lastScan = null; // { hits, scannedPoints, hitPoints } | null
+  let scanProgress = null; // { done, total } | null
+  // scan.js의 격자점+시간창 단위 캐시. 같은 (격자점, 시간창) 조합이면 inferTargets를 다시 돌리지
+  // 않는다(SPEC "cache per (viewport, window)") — 세션 동안 계속 누적해도 격자점당 20바이트
+  // 남짓이라 메모리 부담이 없다.
+  const scanCache = new Map();
+
   // 직전(§5.3 재작성판) evaluateInference 결과 — 결과 패널의 "오경보율 문턱에서의 탐지율" 참고값으로
   // 1회만 계산해 캐싱한다. evaluateInference는 5개 시드를 스스로 파생해 다시 simulate()를 돌리므로
   // (inference.js는 손대지 않고, simulateFn만 넘긴다) 약간의 시간이 걸릴 수 있어 부팅 이후 한 박자
@@ -303,7 +321,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
         detectionUnmatched: pec.detectionAt10FAR,
         unmatchedShare: pec.unmatchedCampaignShare,
       };
-      recomputeInference();
+      renderResults(); // ranked 자체는 그대로다 — evaluation 참고값만 새로 붙여 다시 그린다.
     } catch (err) {
       console.error("evaluateInference 실패 — 결과 패널에 참고 지표를 표시하지 않는다.", err);
     }
@@ -311,16 +329,19 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   setTimeout(runCachedEvaluation, 0);
 
   const resultsPanel = createResultsPanel(resultsEl, {
-    onSelect: (fid) => {
-      selectedFacilityId = fid;
-      recomputeInference();
+    onSelectCandidate: (fid) => {
+      selectedFacilityId = selectedFacilityId === fid ? null : fid;
+      refreshScopePreview();
     },
+    onAnalyze: runAnalyze,
+    onScan: runScanAction,
+    onSelectScanHit,
   });
 
   // ══════════════════════════════════════════════════════════════════════════════════
   // 정답지(scoring-only) 블록 — SPEC_M3 §3 ground truth separation, 절대 규칙.
   // 이 함수는 오직 결과 패널의 "ANSWER KEY" 배지(§6.4, reveal 토글 전용)를 그리기 위해서만
-  // campaigns를 읽는다. 반환값은 recomputeInference() 맨 끝에서 resultsPanel.render()로만
+  // campaigns를 읽는다. 반환값은 renderResults() 안에서 resultsPanel.render()로만
   // 흘러들어가며, 그 위의 추론 경로(projectForInference -> scopeFacilities -> inferTargets)
   // 어디에도 절대 전달되지 않는다. 점수·순위·후보 필터링에 이 값이 섞이면 안 된다.
   //
@@ -344,16 +365,44 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     return ids;
   }
 
-  /** 스코프/시간창/선택이 바뀔 때마다 inferTargets를 다시 돌리고, 지도 레이어·결과 패널을 갱신한다. */
-  function recomputeInference() {
+  // scopePreview: Analyze를 누르기 전에도 항상 최신으로 유지하는 "가벼운" 스코프 요약(§2 항목2
+  // "a live count of events in scope"). inferTargets를 돌리지 않으므로 스코프/시간창을 매 프레임
+  // 드래그로 바꿔도 비용이 크지 않다.
+  let scopePreview = { eventCount: 0, candidateCount: 0, radiusKm: 0 };
+
+  /**
+   * 스코프/시간창이 바뀔 때마다 부른다. 비용이 큰 inferTargets는 절대 여기서 돌리지 않는다(§2
+   * 항목3 "runs when the user asks for it, not continuously") — 대신
+   *   1) 지도의 후보 시설 마커·강조 이벤트(candidateFacilities/supportingEvents)를 갱신하고
+   *      ("candidate facilities are shown by default" — 답이 아니라 답의 공간이므로 Analyze 전에도 보인다)
+   *   2) 결과 패널의 "범위 안 사건 수" 미리보기를 갱신하고
+   *   3) 스코프/시간창이 "마지막 Analyze 결과"와 달라졌으면 그 결과를 무효화한다(stale 방지).
+   */
+  function refreshScopePreview() {
     const active = scopeDraft || scope;
     const win = { startDay: windowStart, endDay: windowEnd };
+
+    // 이전 Analyze 결과가 지금 스코프/시간창과 더 이상 일치하지 않으면 버린다 — 화면에 낡은
+    // 순위가 "지금 스코프의 답"인 것처럼 남아 있으면 안 된다(SPEC_M4 §3.1의 stale 원칙과 같은 정신).
+    if (mode === "analyzed" && lastAnalyze) {
+      const c = lastAnalyze.scopeCenter;
+      const w = lastAnalyze.win;
+      const stale =
+        c.lat !== active.lat || c.lon !== active.lon || c.radiusKm !== active.radiusKm ||
+        w.startDay !== win.startDay || w.endDay !== win.endDay;
+      if (stale) {
+        mode = "idle";
+        lastAnalyze = null;
+        selectedFacilityId = null;
+      }
+    }
+
     // 원본(org 포함) 이벤트는 seam(queryEvents) 하나로만 얻는다 — 여기서 events 배열을 직접 filter하지 않는다.
     const rawScoped = queryEvents({ scope: active, window: win });
-    // 정답지 분리 경계: org 제거는 여기 한 곳에서만 한다. 추론 엔진에는 이 결과만 넘긴다.
-    const projected = projectForInference(rawScoped);
     const scopedFacilities = scopeFacilities(facilities, active);
-    const result = inferTargets({ events: projected, facilities: scopedFacilities, features: FULL_FEATURES });
+    // 정답지 분리 경계: org 제거는 여기 한 곳에서만 한다. 강조 표시(supportingEvents)에도 이
+    // projected 결과만 쓴다 — 지도 어디에도 org 필드가 닿지 않는다.
+    const projected = projectForInference(rawScoped);
     const supportingEvents = selectedFacilityId
       ? inBandEventsFor(facilitiesById.get(selectedFacilityId), projected)
       : [];
@@ -361,26 +410,104 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     inferenceFrame = {
       scope,
       scopeDraft,
+      // §2 항목1 "candidate facilities stay visible by default" — Analyze를 누르기 전에도 항상 보인다.
       candidateFacilities: scopedFacilities,
       selectedFacilityId,
       supportingEvents,
     };
+    scopePreview = {
+      eventCount: rawScoped.length,
+      candidateCount: scopedFacilities.length,
+      radiusKm: active.radiusKm,
+    };
+    renderResults();
+  }
 
-    // reveal이 꺼져 있으면 answer-key 계산 자체를 하지 않고 null을 넘긴다 — results-panel.js는
-    // revealTargetIds가 null이면 답 관련 마크업을 아예 만들지 않으므로, DOM에도 그 어떤 형태로도
-    // 정답이 새지 않는다(prop으로도, class로도, 숨겨진 텍스트로도).
-    const revealTargetIds = reveal ? computeAnswerKeyFacilityIds(active, win) : null;
-
-    resultsPanel.render({
+  /** Analyze — 명시적 버튼(§2 항목3). 이 함수 안에서만 inferTargets(비용이 큰 실제 추론)를 돌린다. */
+  function runAnalyze() {
+    const active = scopeDraft || scope;
+    const win = { startDay: windowStart, endDay: windowEnd };
+    const rawScoped = queryEvents({ scope: active, window: win });
+    const projected = projectForInference(rawScoped);
+    const scopedFacilities = scopeFacilities(facilities, active);
+    const result = inferTargets({ events: projected, facilities: scopedFacilities, features: FULL_FEATURES });
+    lastAnalyze = {
       ranked: result.ranked,
       eventCount: result.eventCount,
       warnings: result.warnings,
       radiusKm: active.radiusKm,
-      facilitiesById,
-      selectedFacilityId,
       scopeCenter: active,
-      evaluation: cachedEval,
-      revealTargetIds,
+      win,
+    };
+    mode = "analyzed";
+    selectedFacilityId = null;
+    refreshScopePreview(); // candidateFacilities/맵을 다시 맞추고 결과 패널을 그린다.
+  }
+
+  /** Scan — 지금 화면(viewport)을 격자로 훑는다(§2 항목4). 비동기라 재생/입력을 막지 않는다. */
+  async function runScanAction() {
+    if (mode === "scanning") return; // 중복 실행 방지
+    mode = "scanning";
+    scanProgress = { done: 0, total: 0 };
+    renderResults();
+
+    const bounds = map.getViewportBounds();
+    const { points } = computeScanGrid(bounds);
+    const win = { startDay: windowStart, endDay: windowEnd };
+    const { hits } = await runScan({
+      points,
+      window: win,
+      queryEvents,
+      facilities,
+      cache: scanCache,
+      onProgress: (done, total) => {
+        scanProgress = { done, total };
+        renderResults();
+      },
+    });
+    lastScan = { hits };
+    scanProgress = null;
+    mode = "scanned";
+    renderResults();
+  }
+
+  /** 스캔 결과 행 선택 — 스코프를 그 창으로 옮기고, 스캔 도중 이미 계산해 둔 순위를 그대로 보여준다
+   * (다시 inferTargets를 돌리지 않는다 — "스캔은 닫힌 결과가 아니라 더 들여다볼 출발점"이라는
+   * §2 항목4 요건). 시간창(window)은 스캔이 "지금 시간창" 고정으로 훑은 것이라 건드리지 않는다.
+   */
+  function onSelectScanHit(hit) {
+    scope = { lat: hit.scope.lat, lon: hit.scope.lon, radiusKm: hit.scope.radiusKm };
+    scopeDraft = null;
+    selectedFacilityId = null;
+    lastAnalyze = {
+      ranked: hit.ranked,
+      eventCount: hit.eventCount,
+      warnings: hit.warnings,
+      radiusKm: hit.scope.radiusKm,
+      scopeCenter: hit.scope,
+      win: { startDay: windowStart, endDay: windowEnd },
+    };
+    mode = "analyzed";
+    refreshScopePreview();
+  }
+
+  /** 지금 상태(mode/scopePreview/lastAnalyze/lastScan/scanProgress)를 결과 패널에 그대로 반영한다. */
+  function renderResults() {
+    const active = scopeDraft || scope;
+    const win = { startDay: windowStart, endDay: windowEnd };
+    // reveal이 꺼져 있으면 answer-key 계산 자체를 하지 않고 null을 넘긴다 — results-panel.js는
+    // revealTargetIds가 null이면 답 관련 마크업을 아예 만들지 않으므로, DOM에도 그 어떤 형태로도
+    // 정답이 새지 않는다(prop으로도, class로도, 숨겨진 텍스트로도).
+    const revealTargetIds =
+      reveal && mode === "analyzed" && lastAnalyze ? computeAnswerKeyFacilityIds(active, win) : null;
+
+    resultsPanel.render({
+      mode,
+      scopePreview,
+      analyze: lastAnalyze
+        ? { ...lastAnalyze, facilitiesById, selectedFacilityId, evaluation: cachedEval, revealTargetIds }
+        : null,
+      scan: { progress: scanProgress, hits: lastScan ? lastScan.hits : [], facilitiesById, selectedFacilityId },
     });
   }
 
@@ -393,7 +520,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     visibleEvents = queryEvents({ window: { startDay: windowStart, endDay: windowEnd } });
     winStartEl.value = windowStart;
     winEndEl.value = windowEnd;
-    recomputeInference(); // 스코프 안 이벤트 수는 시간창에도 좌우된다.
+    refreshScopePreview(); // 스코프 안 이벤트 수는 시간창에도 좌우된다.
   }
 
   // ── 지도 hover 좌표 판독기 ────────────────────────────────────────────
@@ -413,7 +540,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     onHover,
     onFacilityClick: (fid) => {
       selectedFacilityId = selectedFacilityId === fid ? null : fid;
-      recomputeInference();
+      refreshScopePreview();
     },
     landGeo,
     coastGeo,
@@ -439,7 +566,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
       const y0 = e.clientY - rect.top;
       const [lon, lat] = map.unproject(x0, y0);
       scopeDraft = { lat, lon, radiusKm: 0 };
-      recomputeInference();
+      refreshScopePreview();
 
       const move = (ev) => {
         const x = ev.clientX - rect.left;
@@ -447,7 +574,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
         const [lon2, lat2] = map.unproject(x, y);
         scopeDraft.radiusKm = haversineKm(lat, lon, lat2, lon2);
         scopeRadiusEl.value = Math.round(scopeDraft.radiusKm);
-        recomputeInference();
+        refreshScopePreview();
       };
       const up = () => {
         removeEventListener("pointermove", move, true);
@@ -457,7 +584,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
         scopeMode = false;
         scopeBtnEl.classList.remove("on");
         mapEl.classList.remove("scope-armed");
-        recomputeInference();
+        refreshScopePreview();
       };
       addEventListener("pointermove", move, true);
       addEventListener("pointerup", up, true);
@@ -470,7 +597,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     const v = Number(scopeRadiusEl.value);
     if (Number.isFinite(v) && v > 0) {
       scope = { ...scope, radiusKm: v };
-      recomputeInference();
+      refreshScopePreview();
     }
   };
 
@@ -636,11 +763,12 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   rvEl.onclick = (e) => {
     reveal = !reveal;
     e.currentTarget.classList.toggle("on", reveal);
-    // map.setFrame에도 reveal을 넘기지만 map.js는 M1에서 이를 사용하지 않는다(모듈 주석 참고) —
-    // 카드/타임라인만 reveal에 반응한다. 결과 패널의 ANSWER KEY 배지는 reveal에 반응하지만
-    // (computeAnswerKeyFacilityIds, 위 recomputeInference 참고) 추론 자체(랭킹/점수)는
-    // reveal과 무관하게 항상 그대로다 — 정답지 분리 경계, SPEC_M3 §3.
-    recomputeInference(); // reveal 토글 즉시 결과 패널의 답 배지를 갱신한다.
+    // M4-T2(SPEC_M4 §2 항목1)부터 map.js도 reveal을 실제로 쓴다 — org 기본 마커/라벨/반경 링/
+    // TIDEBREAK 궤적과 사건 점의 조직색은 reveal이 꺼지면 지도에서 통째로 빠진다(map.js 참고).
+    // 카드(#cells)의 방향(dir) 배지도 여전히 reveal에 반응한다(dd.hidden = !reveal, chrome() 참고).
+    // 결과 패널의 ANSWER KEY 배지는 reveal에 반응하지만(computeAnswerKeyFacilityIds, renderResults
+    // 참고) 추론 자체(랭킹/점수)는 reveal과 무관하게 항상 그대로다 — 정답지 분리 경계, SPEC_M3 §3.
+    renderResults(); // reveal 토글 즉시 결과 패널의 답 배지를 갱신한다 — 지도는 다음 setFrame에서 갱신.
   };
 
   ppEl.onclick = (e) => {
@@ -706,7 +834,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   // ── 언어 토글(KO/EN) 배선 (SPEC_M4 §1.6) ──────────────────────────────
   // 버튼 자체의 레이블("한국어"/"English")은 항상 고정이라 t()를 거치지 않는다 — 그래야 어느
   // 언어 상태에서도 둘 다 읽힌다(§1.6). setLang()은 상태를 그대로 두고 표시만 바꾸므로(§1.5)
-  // 여기서도 recomputeInference나 setWindow를 다시 부르지 않는다.
+  // 여기서도 renderResults나 refreshScopePreview/setWindow를 다시 부르지 않는다.
   langToggleEl.querySelectorAll(".lang-btn").forEach((b) => {
     b.onclick = () => setLang(b.dataset.lang);
   });

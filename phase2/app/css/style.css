@@ -11,6 +11,8 @@
   --ink:#C9D4DF; --ink-dim:#8CA0B3; --ink-mute:#5E7180;
   --nw:#57C7EA; --tb:#F2A03D; --ds:#C77DD8;
   --land:#26323C; --land-edge:#3B4C58;
+  /* M4-T2: reveal 꺼짐 상태의 "조직 무관" 중립 사건색. palette.js HEX.evt와 반드시 같이 맞출 것. */
+  --evt:#6C8598;
   --f-cond:"IBM Plex Sans Condensed","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR",system-ui,sans-serif;
   --f-sans:"IBM Plex Sans","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR",system-ui,sans-serif;
   --f-mono:"IBM Plex Mono","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR",ui-monospace,monospace;
@@ -137,6 +139,31 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
 .res-bar-floor{position:absolute;top:-2px;bottom:-2px;width:1.5px;background:var(--ink-mute)}
 .res-prob{font-family:var(--f-mono);font-size:11px;color:var(--ink)}
 .res-prob span{color:var(--ink-mute);font-size:10px}
+
+/* ── M4-T2: 스코프 미리보기 + Analyze/Scan 행동 (SPEC_M4 §2 항목2~4) ──────────────────────
+   analyze는 "명시적으로 요청했을 때만 돈다"는 게 이 마일스톤의 핵심이라, 그 버튼을 결과 패널에서
+   가장 눈에 띄는(가득 찬 악센트 배경) 컨트롤로 둔다. scan은 보조 행동이라 테두리만 있는 톤. */
+.res-scope-live{display:flex;flex-wrap:wrap;gap:10px;font-family:var(--f-mono);font-size:10.5px;
+  color:var(--ink-dim);margin:2px 0 8px}
+.res-actions{display:flex;gap:8px;margin-bottom:10px}
+.res-btn{flex:1;font-family:var(--f-cond);font-weight:600;text-transform:uppercase;
+  letter-spacing:.1em;font-size:11px;padding:8px 10px;cursor:pointer;border:1px solid var(--hair-lit)}
+.res-btn:focus-visible{outline:1px solid var(--ink-dim);outline-offset:2px}
+.res-btn-analyze{background:var(--nw);color:var(--void);border-color:var(--nw)}
+.res-btn-analyze:hover{filter:brightness(1.08)}
+.res-btn-analyze:disabled{background:var(--riser);color:var(--ink-mute);border-color:var(--hair);cursor:default}
+.res-btn-scan{background:none;color:var(--ink-dim)}
+.res-btn-scan:hover{color:var(--ink);border-color:var(--ink-mute)}
+.res-btn-scan.busy{color:var(--ink);border-color:var(--nw)}
+.res-idle{color:var(--ink-mute);font-family:var(--f-cond);font-size:11px;padding:10px 0;line-height:1.5}
+.res-scan-progress{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-dim);padding:8px 0}
+.res-scan-progress-track{height:4px;background:var(--hair);margin-top:6px;border-radius:2px;overflow:hidden}
+.res-scan-progress-fill{height:100%;background:var(--nw)}
+.res-scan-hint{color:var(--ink-mute);font-family:var(--f-cond);font-size:10.5px;
+  line-height:1.5;margin:2px 0 8px}
+.res-scan-weak{color:var(--tb);font-family:var(--f-cond);font-weight:600;
+  letter-spacing:.06em;font-size:9.5px;margin-left:6px}
+.res-scan-z{color:var(--ink-dim);font-family:var(--f-mono);font-size:10px}
 
 .log{border-top:1px solid var(--hair);padding:10px 13px 0;min-height:0;display:flex;
   flex-direction:column;gap:5px;overflow:hidden}
