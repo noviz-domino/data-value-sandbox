@@ -200,9 +200,9 @@ Three feature sets, matching the ladder: `P` proximity only, `PE` + encirclement
 
 **Scope radius is 160 km.** This was 60 km in the first draft and it was wrong: at 60 km only **3.9 candidate facilities** fall inside the scope on average, so "pick the right one" was a 1-in-4 question wearing a 1-in-69 costume. At 160 km about **9.2** candidates compete and the campaign's own events are ~18% of what is in scope — close to the global 20/80 signal ratio, so the method has to actually reject noise.
 
-**The floor is scope-relative.** A candidate set that varies per window cannot be scored against a global `1/69`. For each evaluation window compute `1 / (candidates in scope)`, and report the mean of those. At 160 km this is ≈ 10.9%, not 1.45%. **Reporting a global floor here would repeat exactly the phase-1 error this project exists to correct** — an accuracy number with no honest baseline beside it.
+**The floor is scope-relative.** A candidate set that varies per window cannot be scored against a global `1/69`. For each evaluation window compute `1 / (candidates in scope)`, and report the mean of those. Measured at 160 km this is **13.5%**, not 1.45%. (It is not simply `1/9.2 = 10.9%` — the mean of per-window ratios is not the ratio of means.) **Reporting a global floor here would repeat exactly the phase-1 error this project exists to correct** — an accuracy number with no honest baseline beside it.
 
-`top5` is reported but is **not a headline**: with ~9 candidates its floor is ~55%, so it carries little information. Always print a metric next to its own floor; a metric whose floor is near 100% must be visibly marked as vacuous rather than quietly dropped.
+`top5` is reported but is **not a headline**: its measured floor is **~67%** (again a mean of per-window `min(5,n)/n`, not `5/9.2`), so it carries almost no information. Always print a metric next to its own floor; a metric whose floor is near 100% must be visibly marked as vacuous rather than quietly dropped.
 
 **Hit rate.** For each campaign, scope to 160 km centred on the *centroid of that campaign's events* (not on the target — the analyst does not know it), over the campaign's day window widened by ±10 days. Record whether the true `targetId` ranks 1st, and its rank.
 
@@ -279,7 +279,7 @@ Node script, same style as `_analysis_selftest.mjs`. Must assert:
    percentiles). A 0% detection rate across all feature sets is a broken metric, not a result — say so.
 8. Determinism: two runs with the same seed give identical rankings.
 
-**Encirclement carries no pass/fail assertion.** Measurement so far shows it changes nothing (`PE.top1 == P.top1` exactly), and a null result is a finding to report, not a defect to tune away. Print its effect and let the numbers speak. If it stays flat, the honest conclusion is that bearing spread is not a usable signal in this geography — say so in the output.
+**Encirclement carries no pass/fail assertion.** Measured across 5 pooled seeds it is **slightly negative** (`PE.top1 - P.top1 = -1.85pp`), and a null-or-negative result is a finding to report, not a defect to tune away. Print its effect and let the numbers speak. If it stays flat, the honest conclusion is that bearing spread is not a usable signal in this geography — say so in the output.
 
 Print the full table: feature set × top1 × scope floor × lift × top5 (with its floor) × detection@10%FAR × mean candidates in scope, with the across-seed range.
 

@@ -206,8 +206,8 @@ export function inferTargets({ events, facilities, features }) {
     .sort((a, b) => b.prob - a.prob);
 
   const warnings = [];
-  if (events.length < 25) warnings.push("too few events in scope for a reliable estimate");
-  if (withProb.length === 0 || withProb[0].prob < 0.15) warnings.push("no candidate stands out");
+  if (events.length < 25) warnings.push("too few events in scope for a reliable estimate (표본 부족 — 추정 신뢰 어려움)");
+  if (withProb.length === 0 || withProb[0].prob < 0.15) warnings.push("no candidate stands out (뚜렷한 후보 없음)");
 
   return { ranked: withProb, eventCount: events.length, warnings };
 }

@@ -11,9 +11,9 @@
   --ink:#C9D4DF; --ink-dim:#8CA0B3; --ink-mute:#5E7180;
   --nw:#57C7EA; --tb:#F2A03D; --ds:#C77DD8;
   --land:#26323C; --land-edge:#3B4C58;
-  --f-cond:"IBM Plex Sans Condensed",system-ui,sans-serif;
-  --f-sans:"IBM Plex Sans",system-ui,sans-serif;
-  --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+  --f-cond:"IBM Plex Sans Condensed","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR",system-ui,sans-serif;
+  --f-sans:"IBM Plex Sans","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR",ui-monospace,monospace;
 }
 *{box-sizing:border-box}
 body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
@@ -105,6 +105,8 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
   color:var(--ink-dim);margin:8px 0}
 .res-warn{margin-bottom:6px}
 .res-warn-item{font-family:var(--f-mono);font-size:10.5px;color:var(--tb);padding:2px 0}
+/* 밀도 맞추지 않은 탐지율을 부제로 함께 보여준다 — 대표값과 구분되게 한 단 낮춘 톤. */
+.res-fa-sub{display:block;margin-top:3px;color:var(--ink-mute);font-size:10px;line-height:1.4;}
 .res-fa{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-dim);margin-bottom:8px}
 .res-fa b{color:var(--ink)}
 .res-list{display:flex;flex-direction:column;gap:8px}
