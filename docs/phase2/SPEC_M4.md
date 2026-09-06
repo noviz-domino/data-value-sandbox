@@ -48,6 +48,47 @@ A `KO / EN` segmented control in the top status bar, right-aligned near the exis
 
 Korean rendering already has a font fallback in `css/style.css`; do not remove it.
 
+## 1.5 The analyst-first interaction model — the correction that reshaped M4
+
+The app was opening on the wrong thing, and a user seeing it for the first time said so: *"three labelled things move in a line and coloured dots appear around them — what is this?"*
+
+Two defects, both mine:
+
+**Every event dot was coloured by the organisation that produced it, always.** `map.js` did `getFillColor: (d) => [...colorOf(d.org), 90]` with no reveal check. The answer was painted on the screen before any question was asked. The M3 review verified that no ground truth reaches the *model*; nobody checked whether it reaches the *screen*. It did.
+
+**Target inference — the point of the tool — was a side panel** you could only reach by knowing to drag on the map. The default view was the ground-truth world playing back, which reads as a screensaver of the answer.
+
+The user's own description of what they expected is the correct product: *"designate a location, or have it automatically analyse a region, and predict the target."* That is what M3 built. It was simply buried under a view that gave away its own answer.
+
+### The corrected flow
+
+**1. Default — what an analyst actually has.**
+- Events render in a single **neutral colour**. No organisation identity.
+- Organisation bases, radius circles, organisation colours and directive states are **ground truth** and appear only under the existing reveal toggle. Reveal must gate the map layers, not just the side cards.
+- **Candidate facilities are shown by default** — public infrastructure is not secret, and they are the answer space, not the answer.
+
+**2. Scope, then time — the analyst's own question.**
+Selecting a region is the first-class first step, not a hidden gesture. Support click-to-place-centre with drag-to-size, a numeric radius, and the time window, with a live count of events in scope. The user's framing: *"I might only want to look at one region of Korea."* That is the normal use, so it must be obvious.
+
+**3. An explicit Analyze action.**
+Inference runs when the user asks for it, not continuously. The user chose this over auto-running on load, and their reason is the design rationale: you may want to place a point, size a region, and set a period *before* anything is computed. Make it the visually primary control.
+
+**4. Scan — for when the user has no particular region in mind.**
+A second action that answers *"anywhere in view, what looks most prepared-against right now?"*
+
+- Grid the current viewport at **80 km** spacing, capped at **60 grid points** (widen the spacing to fit the cap rather than truncating the area, so the scan always covers what is on screen).
+- At each point with at least **25 events** inside a 160 km scope over the current window, run `inferTargets`.
+- For each facility keep its **best** window: the one with the highest standout `z`.
+- Rank by `z`, show the top **10** with probability, `z`, distance and event count, and the scope-relative floor beside them.
+- Selecting a row moves the scope circle to that window, so a scan result is a starting point for a closer look rather than a dead end.
+- Six-plus inference runs is slow enough to notice: show progress, keep the UI responsive, and cache per `(viewport, window)`.
+
+**Never present a scan hit as a warning about a place.** It reports where *this method* finds structure in *this synthetic dataset*, and the wording on screen must say so.
+
+### Empty and weak states carry information
+
+If a scope holds too few events, or no candidate stands out, say that plainly instead of rendering a confident-looking ranking. The §5.2 warnings already exist; the interface must give them room. **A ranking backed by 12 events must not look like one backed by 300** — this is the same rule as the floor: never show a number without what makes it readable.
+
 ## 2. Organisations view (`#view-org`) — SPEC.md §12
 
 Currently a placeholder. Build the editable configuration surface.

@@ -268,23 +268,37 @@ Spec: [SPEC_M4.md](SPEC_M4.md). Ground-truth separation (SPEC_M3 §3) still appl
 - [ ] every existing screen string converted; **inline "(한국어)" glosses removed** — superseded by the toggle
 - [ ] dataset values (org/branch/method/target/facility id+kind/directive) stay English in both languages
 
-### M4-T2 — organisations view + signal sliders + sweep (Sonnet author)
+### M4-T2 — analyst-first interaction: neutral dots, scope-then-analyze, scan (Sonnet author) [PRIORITY]
+> Added after the user saw the app and asked "what is this?". Two defects, both architect's:
+> events were coloured by their producing org **always** (`map.js` getFillColor, no reveal check) — the
+> answer was painted on screen before any question was asked; and target inference, the point of the
+> tool, was a side panel reachable only by knowing to drag. The M3 review checked that ground truth
+> never reaches the *model*; nobody checked whether it reaches the *screen*. It did.
+- [ ] neutral event dots by default; org colours/bases/radii/directives gated behind reveal (§1.5)
+- [ ] facilities visible by default — they are the answer space, not the answer
+- [ ] scope selection as the first-class first step; explicit **Analyze** action (user chose this over
+      auto-run: "I might want to place a point and size a region first")
+- [ ] **Scan**: grid the viewport at 80 km (max 60 points), rank top 10 facilities by standout z,
+      selecting a row moves the scope there
+- [ ] weak/empty states given room — a ranking backed by 12 events must not look like one backed by 300
+
+### M4-T3 — organisations view + signal sliders + sweep (Sonnet author)
 - [ ] per-org editable form, stale-state banner, reset to defaults, preview map (§2.1)
 - [ ] signal sliders incl. the new noise-ratio slider (§2.2)
 - [ ] sweep at 6 strengths plotting M2 recovered fraction + M3 top-1 against their floors, single seed, labelled as such (§2.3)
 
-### M4-T3 — data view + export (Sonnet author)
+### M4-T4 — data view + export (Sonnet author)
 - [ ] sortable/filterable event table, row count + filter summary (§3)
 - [ ] separate `events.csv` and `ground_truth.json` exports — no combined export, by design
 
-### M4-T4 — guided first run (Sonnet author)
+### M4-T5 — guided first run (Sonnet author)
 - [ ] four anchored steps, dismissible, once-only via localStorage, restart affordance (§4)
 
-### M4-T5 — architect final review (Opus)
+### M4-T6 — architect final review (Opus)
 - [ ] cross-review, live run, screenshots in both languages, DEVLOG, README, commit
 
 ## Resume notes (M4)
 
-T1 blocks T2-T4 (they all call `t()`). After T1 lands the other three are independent and can run in parallel —
+T1 blocks T2-T5 (they all call `t()`). T2 is the priority — it is the correction that makes the tool legible. After T1 lands the other three are independent and can run in parallel —
 they touch different view files and each registers its own strings, so there is no shared dictionary to conflict on.
 Always re-verify with `node phase2/app/js/_analysis_selftest.mjs` and `node phase2/app/js/_inference_selftest.mjs`.
