@@ -98,54 +98,160 @@ for (const camp of campaigns) {
 }
 check("4. no campaign event within 1.5km of its target", violations === 0, `violations=${violations}, min observed distance=${minDist.toFixed(3)}km`);
 
-// --- 평가: P/PE/PEC 사다리 ---
-const evalResult = evaluateInference({ events, facilities, campaigns, days, seed: SEED });
-const { runs, floor } = evalResult;
+// --- 평가: P/PE/PEC 사다리, 5시드 풀링 (§5.3 재작성판) ---
+// evaluateInference는 이제 고정된 events/campaigns 한 벌이 아니라, "시드를 넣으면 새 시뮬레이션을
+// 돌려주는 함수"를 받는다 — 5개 시드를 풀링하려면 시드마다 캠페인 배치 자체가 달라야 하기 때문이다
+// (컨트롤 윈도우 RNG만 바꿔서는 캠페인 표본이 늘지 않는다). inference.js는 simulation.js를 직접
+// import하지 않으므로, "시드 -> 시뮬레이션 결과" 책임은 여기(호출부)에서 진다.
+const simulateFn = (s) => simulate({ seed: s, landTest, facilities: facilitiesRaw, withCampaigns: true });
 
-console.log("\n=== P/PE/PEC table ===");
-console.log("set | top1    | top5    | falseAlarmRate | meanEventsInScope");
+const evalResult = evaluateInference({ simulateFn, seed: SEED, seeds: 5 });
+const { runs } = evalResult;
+
+const fmtPct = (x) => `${(x * 100).toFixed(1)}%`;
+const fmtRange = (r) => `[${fmtPct(r[0])}–${fmtPct(r[1])}]`;
+const fmtNumRange = (r) => `[${r[0].toFixed(1)}–${r[1].toFixed(1)}]`;
+
+console.log("\n=== P/PE/PEC table (5시드 풀링, 괄호는 시드 간 range) ===");
+console.log(
+  "set | top1              | floor1 | lift | top5              | floor5 | det@10%FAR         | meanCandidates"
+);
 for (const key of ["P", "PE", "PEC"]) {
   const r = runs[key];
   console.log(
-    `${key.padEnd(3)} | ${(r.top1 * 100).toFixed(1).padStart(6)}% | ${(r.top5 * 100).toFixed(1).padStart(6)}% | ${(r.falseAlarmRate * 100).toFixed(1).padStart(13)}% | ${r.meanEventsInScope.toFixed(1)}`
+    `${key.padEnd(3)} | ${fmtPct(r.top1).padStart(6)} ${fmtRange(r.top1Range).padEnd(11)} | ` +
+      `${fmtPct(r.floorTop1).padStart(6)} | ${r.lift.toFixed(2).padStart(4)}x | ` +
+      `${fmtPct(r.top5).padStart(6)} ${fmtRange(r.top5Range).padEnd(11)} | ` +
+      `${fmtPct(r.floorTop5).padStart(6)} | ${fmtPct(r.detectionAt10FAR).padStart(6)} ${fmtRange(r.detectionAt10FARRange).padEnd(11)} | ` +
+      `${evalResult.meanCandidatesInScope.toFixed(1)} ${fmtNumRange(evalResult.meanCandidatesInScopeRange)}`
   );
 }
-console.log(`floor: top1=${(floor.top1 * 100).toFixed(2)}% top5=${(floor.top5 * 100).toFixed(2)}%`);
-
-// --- 5. PEC.top1 >= 3x floor.top1 ---
-check(
-  "5. PEC.top1 >= 3x top1 floor",
-  runs.PEC.top1 >= 3 * floor.top1,
-  `PEC.top1=${(runs.PEC.top1 * 100).toFixed(1)}% floor.top1=${(floor.top1 * 100).toFixed(2)}% (3x=${(3 * floor.top1 * 100).toFixed(2)}%)`
+console.log(
+  `campaignsEvaluated(pooled, 5 seeds)=${evalResult.campaignsEvaluated} seedsUsed=${JSON.stringify(evalResult.seedsUsed)}`
 );
 
-// --- 6. 사다리: PEC > PE > P, PEC - P >= 10pp ---
-check(
-  "6a. ladder holds: PEC.top1 > PE.top1 > P.top1",
-  runs.PEC.top1 > runs.PE.top1 && runs.PE.top1 > runs.P.top1,
-  `P=${(runs.P.top1 * 100).toFixed(1)}% PE=${(runs.PE.top1 * 100).toFixed(1)}% PEC=${(runs.PEC.top1 * 100).toFixed(1)}%`
+// --- §5.3 요구: 통제·캠페인 두 z 분포를 50/90/99th percentile로 함께 보고한다.
+// 이러면 문턱(=통제 z의 90th pct)이 어디 있는지, 분포가 최댓값에 몰려 포화됐는지가
+// 숫자 하나(탐지율 0%) 뒤에 숨지 않고 바로 드러난다.
+const fmtZ = (x) => (Number.isFinite(x) ? x.toFixed(3) : String(x));
+console.log("\n=== z(standout score) 분포: 통제 구간 vs 캠페인 (풀링, 5시드) ===");
+console.log("set | threshold(=controlZ p90) | control z [p50/p90/p99] | campaign z [p50/p90/p99]");
+for (const key of ["P", "PE", "PEC"]) {
+  const r = runs[key];
+  console.log(
+    `${key.padEnd(3)} | ${fmtZ(r.operatingThreshold).padStart(10)} | ` +
+      `[${fmtZ(r.controlZP50)} / ${fmtZ(r.controlZP90)} / ${fmtZ(r.controlZP99)}] | ` +
+      `[${fmtZ(r.campaignZP50)} / ${fmtZ(r.campaignZP90)} / ${fmtZ(r.campaignZP99)}]`
+  );
+}
+
+// --- §5.3 재작성판: 통제 구간과 캠페인 구간이 "같은 규칙으로" 뽑혔는지, 스코프 안 이벤트 수를
+// side-by-side로 비교해 확인한다. 20% 넘게 차이 나면 둘이 아직 비교 가능하지 않다는 뜻이라
+// 탐지율 숫자를 신뢰할 수 없다 — 그 경우 여기서 명시적으로 경고한다(가짜로 통과시키지 않는다).
+const meanEvCampaign = evalResult.meanEventsInScopeCampaign;
+const meanEvControl = evalResult.meanEventsInScopeControl;
+const evDiffPct = meanEvCampaign > 0 ? Math.abs(meanEvControl - meanEvCampaign) / meanEvCampaign : Infinity;
+console.log("\n=== 스코프 안 이벤트 수: 캠페인 창 vs 통제 창 (side-by-side) ===");
+console.log(
+  `campaign windows: mean events in scope = ${meanEvCampaign.toFixed(2)}\n` +
+    `control  windows: mean events in scope = ${meanEvControl.toFixed(2)}\n` +
+    `diff = ${(evDiffPct * 100).toFixed(1)}%`
 );
+if (evDiffPct > 0.2) {
+  console.log(
+    `[WARN] 캠페인 창과 통제 창의 평균 이벤트 수가 20% 넘게 차이난다(volume-confounded) — 위 ` +
+      `unmatched detection@10%FAR 수치는 "이벤트 수만 세도 이길 수 있는" 상태이므로 신뢰할 수 ` +
+      `없다(§5.3). 아래 밀도 매칭(density-matched) 수치를 봐야 한다.`
+  );
+} else {
+  console.log(`[INFO] 두 창의 평균 이벤트 수 차이가 20% 이내다 — 비교 가능한 것으로 본다.`);
+}
+
+// --- §5.3 재작성판 "Density-match the controls": 캠페인 창마다 이벤트 수 N이 맞는(0.8N~1.2N)
+// 통제 창을 최대 200회 거부-샘플링으로 찾아 짝짓고, 그 짝 위에서만 detection@10%FAR을 다시 잰다.
+// unmatched 수치(위)는 "이벤트 수만 세도 되는" 오염된 채점이었을 수 있다 — 이게 진짜 채점이다.
+console.log("\n=== 밀도 매칭(density-matched) 통제: 짝지은 캠페인/통제 창의 이벤트 수 ===");
+for (const key of ["P", "PE", "PEC"]) {
+  const r = runs[key];
+  console.log(
+    `${key.padEnd(3)} | matched pairs=${r.matchedPairCount} | unmatched share=${fmtPct(r.unmatchedCampaignShare)} | ` +
+      `campaign mean events(matched)=${r.meanEventsInScopeCampaignMatched.toFixed(2)} | ` +
+      `control mean events(matched)=${r.meanEventsInScopeControlMatched.toFixed(2)}`
+  );
+}
+
+console.log("\n=== 밀도 매칭 detection@10%FAR (unmatched와 나란히 비교) ===");
+console.log("set | det@10%FAR (unmatched, volume-confounded) | det@10%FAR (matched)              | matched threshold");
+for (const key of ["P", "PE", "PEC"]) {
+  const r = runs[key];
+  console.log(
+    `${key.padEnd(3)} | ${fmtPct(r.detectionAt10FAR).padStart(6)} ${fmtRange(r.detectionAt10FARRange).padEnd(20)} | ` +
+      `${fmtPct(r.detectionAt10FARMatched).padStart(6)} ${fmtRange(r.detectionAt10FARMatchedRange).padEnd(20)} | ` +
+      `${fmtZ(r.matchedOperatingThreshold)}`
+  );
+}
+
+console.log("\n=== 밀도 매칭 z 분포: 통제 vs 캠페인 (짝지은 것만, 풀링) ===");
+console.log("set | threshold(=matched controlZ p90) | control z [p50/p90/p99] | campaign z [p50/p90/p99]");
+for (const key of ["P", "PE", "PEC"]) {
+  const r = runs[key];
+  console.log(
+    `${key.padEnd(3)} | ${fmtZ(r.matchedOperatingThreshold).padStart(10)} | ` +
+      `[${fmtZ(r.matchedControlZP50)} / ${fmtZ(r.matchedControlZP90)} / ${fmtZ(r.matchedControlZP99)}] | ` +
+      `[${fmtZ(r.matchedCampaignZP50)} / ${fmtZ(r.matchedCampaignZP90)} / ${fmtZ(r.matchedCampaignZP99)}]`
+  );
+}
+
+// encirclement는 pass/fail 판정 대상이 아니다 (§5.4) — 효과를 그대로 출력만 한다.
+const peEffectPP = (runs.PE.top1 - runs.P.top1) * 100;
+if (Math.abs(peEffectPP) < 0.05) {
+  console.log(
+    `[INFO] encirclement 효과: PE.top1 == P.top1 (delta=${peEffectPP.toFixed(2)}pp) — 완전히 평평함. ` +
+      `이 지리적 배치에서 방위각 퍼짐(bearing spread)은 쓸 만한 신호가 아니라는 뜻으로 판단, 튜닝하지 않고 그대로 보고한다.`
+  );
+} else {
+  console.log(`[INFO] encirclement 효과: PE.top1 - P.top1 = ${peEffectPP.toFixed(2)}pp`);
+}
+
+// --- 5. PEC.top1 >= 2x scope-relative floor (재작성판: 3x -> 2x) ---
+check(
+  "5. PEC.top1 >= 2x scope-relative top1 floor",
+  runs.PEC.top1 >= 2 * runs.PEC.floorTop1,
+  `PEC.top1=${fmtPct(runs.PEC.top1)} floor=${fmtPct(runs.PEC.floorTop1)} (2x=${fmtPct(2 * runs.PEC.floorTop1)})`
+);
+
+// --- 6. PEC.top1 - P.top1 >= 8pp (풀링된 5시드 결과 기준. pooled SE~3pp이므로 8pp면 우연이 아니다) ---
 const ladderDeltaPP = (runs.PEC.top1 - runs.P.top1) * 100;
 check(
-  "6b. PEC.top1 - P.top1 >= 10pp",
-  ladderDeltaPP >= 10,
-  `delta=${ladderDeltaPP.toFixed(1)}pp`
+  "6. PEC.top1 - P.top1 >= 8pp (pooled)",
+  ladderDeltaPP >= 8,
+  `P=${fmtPct(runs.P.top1)} PEC=${fmtPct(runs.PEC.top1)} delta=${ladderDeltaPP.toFixed(1)}pp`
 );
 
-// --- 7. PEC.falseAlarmRate <= 0.25 ---
+// --- 7. PEC의 10%FAR 탐지율이 P보다 높고, 문턱 계산 자체가 퇴화(degenerate)하지 않았는지 ---
+// "퇴화하지 않았다"는 것은 통제 구간 z 분포가 자기 최댓값(p99)에 뭉쳐 있지 않다는 뜻이다.
+// 확률 기반 문턱이 실패했던 방식(30%가 부동소수점 1.0에 포화 -> p50==p90==p99==1.0)이
+// 그대로 재현되지 않는지 PEC 기준으로 확인한다.
+const pecNonDegenerate =
+  Number.isFinite(runs.PEC.controlZP90) && runs.PEC.controlZP99 - runs.PEC.controlZP50 > 1e-6;
 check(
-  "7. PEC.falseAlarmRate <= 0.25",
-  runs.PEC.falseAlarmRate <= 0.25,
-  `falseAlarmRate=${(runs.PEC.falseAlarmRate * 100).toFixed(1)}%`
+  "7a. PEC detection@10%FAR > P detection@10%FAR",
+  runs.PEC.detectionAt10FAR > runs.P.detectionAt10FAR,
+  `P=${fmtPct(runs.P.detectionAt10FAR)} PEC=${fmtPct(runs.PEC.detectionAt10FAR)}`
+);
+check(
+  "7b. calibration is non-degenerate (control z not concentrated at its max)",
+  pecNonDegenerate,
+  `PEC control z p50=${fmtZ(runs.PEC.controlZP50)} p90=${fmtZ(runs.PEC.controlZP90)} p99=${fmtZ(runs.PEC.controlZP99)}`
 );
 
-// --- 8. 결정성: 같은 seed로 두 번 실행하면 동일한 순위가 나오는지 ---
-const evalResult2 = evaluateInference({ events, facilities, campaigns, days, seed: SEED });
+// --- 8. 결정성: 같은 seed로 두 번 실행하면 동일한 순위(풀링 결과)가 나오는지 ---
+const evalResult2 = evaluateInference({ simulateFn, seed: SEED, seeds: 5 });
 let deterministicOk = true;
 for (const key of ["P", "PE", "PEC"]) {
   const a = runs[key];
   const b = evalResult2.runs[key];
-  if (a.top1 !== b.top1 || a.top5 !== b.top5 || a.falseAlarmRate !== b.falseAlarmRate) {
+  if (a.top1 !== b.top1 || a.top5 !== b.top5 || a.detectionAt10FAR !== b.detectionAt10FAR) {
     deterministicOk = false;
   }
 }
