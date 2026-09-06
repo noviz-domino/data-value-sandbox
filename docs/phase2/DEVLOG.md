@@ -143,6 +143,69 @@ The headline is **per-org recall, not overall accuracy** — which barely moves 
 
 APPROVE-WITH-FIXES. No label leakage, shared/stratified/seeded split across A/B/C, train-only normalization, correct confusion-matrix math, deterministic, fast. The one substantive fix (branch share) is done. Minor items accepted or deferred: the oracle's gaussian spatial kernel is a documented smoothing of the true hard-radius disk; ordinal target encoding; a missing divide-by-zero guard on `recovered` for degenerate subsets.
 
+## 2026-09-06 — M3 built: target inference, and four times the measurement said no
+
+M3 was supposed to be "signal-strength sliders". Talking it through with the project owner, that turned out to have no consumer, and the conversation surfaced what the project is actually for. Not *"predict terrorism"* — the thing serious analysts distrust most — but **"what must you collect before prediction is possible, and where does the method break?"** The sharpest form of that question: an operation against a facility does not start by attacking the facility. It starts with enabling actions *around* it. So — **given scattered incidents, which facility are they preparing against?**
+
+That reframing brought three design constraints from the owner, each of which I had wrong first:
+
+- **Facility locations must be real.** I had proposed scattering synthetic facilities. The owner pointed out that a power plant sits where it does because of the grid and the population, and inventing positions puts a data centre in the Alaskan wilderness — a game, not a methodology demo. We use real OSM coordinates (ODbL) and **withhold the names**, so placement is realistic while no screenshot can read as a target list for real infrastructure.
+- **Most events must be unrelated.** If every event belongs to a campaign there is nothing to analyse. 80% of the data is background, and — crucially — **the background also clusters near facilities**, or "activity near a facility" would trivially mean "target".
+- **Several organisations run campaigns at once**, so deciding which events belong together is a real problem rather than a given.
+
+Then the measurements started disagreeing with my spec. Four times.
+
+### 1. The terrain model was eating the campaigns
+
+Campaign share came out 16% instead of 20%, and the author root-caused it rather than nudging a constant: of 160 candidate facilities, the generator's coarse terrain polygon (ne_110m) resolves only **69** as land. Background events use 80–600 km radii so this never mattered; campaign events sit in a tight 4–28 km ring around one facility, where it matters enormously. Six campaigns generated **zero** events — every placement attempt landed in what the coarse polygon calls sea.
+
+The tempting fix was a finer polygon. Measuring it killed that idea: at 50 m resolution 107 facilities resolve as land, but they sit on narrow islands, so the mean ring is only 60% land and **55 of 97 have strongly one-sided available bearings**. Worse, mixing resolutions would have leaked — background placed against the coarse model never lands on small islands, so campaign events placed against a finer one would have made *"event on a small island"* imply *"campaign event"* and inflated every score. Restricted candidates to the 69 the generator itself resolves. Share went to 20.2%, top-1 from 37% to 76%.
+
+### 2. That 76% was a lie, and it was my lie
+
+top5 came back **100% for every feature set**, which is the kind of number that should stop you. It did. At a 60 km scope only **3.9 candidate facilities** are in range on average. The task was four-way multiple choice being scored against a global 1-in-69 floor of 1.45%. The honest floor was **25.4%**.
+
+**This is exactly the phase-1 mistake** — the 68% accuracy that looked good until you noticed that guessing the majority class scored 59.5%. The entire project exists to correct that habit, and I had rebuilt it in the spec. Scope went to 160 km (9.2 competing candidates), the floor became scope-relative, and top5 is now printed next to its own ~67% floor so its vacuity is visible rather than flattering.
+
+### 3. The confidence number was saturating
+
+With the ladder restored, detection-at-10%-false-alarm came out **0.0% for every feature set** — suspicious in the other direction. Cause: the softmax saturates to floating-point 1.0, and **~30% of pure-noise control windows also reported ~100% confidence**, so the 90th-percentile threshold landed at 0.9999999999999969, above every genuine campaign.
+
+Not a coding bug — a category error in my spec. A softmax probability answers *"how far ahead is first place?"*, not *"how strong is the evidence?"*. Three events huddled near one facility produce the same 99% as three hundred. And a system that shouts 100% at empty ground is worse than useless: it is the alert-fatigue failure that makes analysts stop reading alerts. Probability is now display-only (scaled by spread, not mean, and clamped); detection calibrates on a **standout score** z = (top − mean) / sd, which is scale-free and cannot saturate.
+
+### 4. The comparison itself was rigged
+
+Detection was still 0%, and the author traced why: control windows were centred **on a facility**, while campaign windows are centred on an event centroid with the true target deliberately off-centre. A facility sitting at the middle of its own scope, surrounded by the background clustering we deliberately put near facilities, enjoys an advantage no honest campaign target gets. Measured: control z sat *above* campaign z everywhere. The bar was unreachable by construction, not by any weakness of the method. Control windows are now built by the same rule as campaign windows.
+
+### 5. …and then the volume confound
+
+Now detection worked (6.3 → 9.3 → 17.0%), but the windows still were not comparable: campaign windows held **81.2 events**, controls **32.0**. A detector can win that comparison by counting events and never looking at geometry. Density-matched controls — rejection-sample until the control holds 0.8–1.2x the campaign's event count — settle it.
+
+### The result
+
+```
+                     top1                floor   lift    detection @10% FAR
+P    coords          39.3% [29.6-48.1]   13.5%   2.91x    5.0%
+PE   + encirclement  37.4% [27.8-46.3]   13.5%   2.77x    6.9%
+PEC  + convergence   51.5% [38.9-64.8]   13.5%   3.81x   14.5%
+```
+
+Pooled over 5 seeds, 270 campaigns, ~9.2 candidates per scope. Detection is the density-matched figure; unmatched it reads 17.0%, and the gap is what event volume alone was buying.
+
+**Ranking works and the ladder is real.** Convergence — events closing in on the target as the campaign progresses — is the signal that does the work, and it is invisible without dates. That is the project's thesis, measured: *this* is the data you must collect.
+
+Two honest caveats stay in the headline. **Encirclement does not work here** (−1.85pp, slightly negative); bearing spread is not a usable signal in an archipelago, and a null result reported is worth more than a null result tuned away. And **detection is modest**: the method usually names the right facility first, but telling "a campaign is happening here" from "this is a busy neighbourhood" is much harder than ranking within a scope. For **41% of campaigns no campaign-free region on the map is ever as busy** — for those, volume alone is already a crude discriminator.
+
+### Review
+
+APPROVE. Ground-truth separation intact on every path into inferTargets (verified by tracing, not grep); simulator and engine match the spec to the letter; determinism holds under execution; `withCampaigns:false` stays byte-identical so M2's numbers are untouched. The findings were stale *documentation* — my back-of-envelope floors (10.9%, 55%) were wrong where the code's measured averages (13.5%, 67%) were right, because the mean of per-window ratios is not the ratio of means.
+
+The reviewer also flagged a dead `revealTargetId` prop as a leak landmine, which prompted wiring the answer key properly: gated behind the reveal toggle, computed in a marked scoring block, and showing **every** campaign in scope rather than pretending there is exactly one.
+
+### What this cost, and what it bought
+
+Five rounds on one metric feels like thrashing. It was not: each round replaced a number that looked fine with a number that means something. The 0% detection rate was more valuable than the 17% would have been, because chasing it produced a metric that survives a fair comparison. The pattern in all four errors is the same one this project was built to catch — **a performance number with no honest baseline beside it** — and it kept reappearing in new costumes: a global floor for a local task, a probability mistaken for evidence, an unfair control, an unmatched density.
+
 ## Next
 
 - M3: organizations view + signal-strength sliders + the sweep (how strong must a signal be before it's detectable)

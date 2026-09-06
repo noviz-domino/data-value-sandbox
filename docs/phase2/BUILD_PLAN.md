@@ -223,16 +223,19 @@ Spec: [SPEC_M3.md](SPEC_M3.md). Ground-truth separation (§3) applies to every t
 ### M3-T2 — inference engine `inference.js` (Sonnet author) [scoring DONE, evaluation being rebuilt]
 - [x] `projectForInference` / `scopeEvents` / `scopeFacilities` / `inferTargets` — ring kernel verified
       on isolated fixtures (peak at 14 km, on-facility penalised, R≈0 spread vs R≈1 one-sided)
-- [ ] **M3-T2b (in flight):** evaluation rebuilt to the rewritten §5.3 — 160 km scope, scope-relative
-      floor, detection@10%FAR instead of a fixed 0.35 cut, 5-seed pooling
+- [x] **M3-T2b/c/d/e:** evaluation rebuilt over four rounds, each finding a real defect:
+      160 km scope + scope-relative floor; standout-score `z` replacing a saturating softmax
+      (30% of noise windows read ~100% confidence); control windows rebuilt to match campaign-window
+      construction (they had been facility-centred, which rigged the comparison); density-matched
+      controls (campaign windows held 81.2 events vs controls' 32.0). All 8 assertions pass.
 > Architect error caught by measurement: at 60 km only 3.9 candidates are in scope, so the task was
 > 4-way multiple choice scored against a global 1-in-69 floor. Same class of mistake as phase 1's
 > unbaselined 68%. Honest floor is ~10.9%, not 1.45%; top5 is vacuous (floor ~55%).
 
-### M3-T3 — UI: time window + scope selection + results panel (Sonnet author) [IN FLIGHT]
-- [ ] timeline bar → time window control, default last 100 days (§6.1)
-- [ ] `queryEvents({scope, window})` seam so views never index the array (§6.2)
-- [ ] map scope circle (click-drag + numeric radius), results panel with floor and warnings (§6.3–6.4)
+### M3-T3 — UI: time window + scope selection + results panel (Sonnet author) [DONE — 69d6088]
+- [x] timeline bar → time window control, default last 100 days (§6.1)
+- [x] `queryEvents({scope, window})` seam so views never index the array (§6.2)
+- [x] map scope circle (click-drag + numeric radius), results panel with floor and warnings (§6.3–6.4)
 
 ### M3-T4 — visual language 6:3:1 (Sonnet author) [DONE — committed 41d310f]
 - [x] `palette.js` + `:root` custom properties; all literals centralised out of map/main/timeline/analysis-view
