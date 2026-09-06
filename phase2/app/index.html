@@ -2,12 +2,20 @@
 <title>Ground Truth Console</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
 <link rel="stylesheet" href="css/style.css">
+<!-- M4 scaffold: 조직/데이터/투어 뷰는 각자 자기 CSS 파일만 건드린다(style.css를 공유 편집하지
+     않도록 접촉면을 미리 갈라둔다). 지금은 각 파일이 최소 스텁 스타일만 담고 있다. -->
+<link rel="stylesheet" href="css/org-view.css">
+<link rel="stylesheet" href="css/data-view.css">
+<link rel="stylesheet" href="css/tour.css">
 
 <div class="wrap" data-view="sim">
   <div class="statusbar">
     <div class="id">Ground Truth Console</div>
     <div class="stat"><b id="lbl-seed">Seed</b><span>20260903</span></div>
-    <div class="stat"><b id="lbl-cells">Cells</b><span>3</span></div>
+    <!-- M4-T? ground-truth 분리(§Job1): 셀(조직) 개수는 지휘 계층 정보라 reveal이 꺼지면
+         main.js가 이 블록 전체를 hidden 처리한다 — 값(3)만 지우면 레이아웃 자리가 남아 "뭔가
+         숨겼다"는 티가 나므로 블록째 뺀다. -->
+    <div class="stat" id="stat-cells"><b id="lbl-cells">Cells</b><span>3</span></div>
     <div class="stat"><b id="lbl-events">Events</b><span id="s-ev">0000</span></div>
     <div class="stat"><b id="lbl-span">Span</b><span>1826 D</span></div>
     <div class="live"><span class="dot on" id="s-dot"></span><span id="s-mode">RUNNING</span></div>
@@ -56,8 +64,12 @@
     </aside>
 
     <div class="viewpane" id="view-anl"></div>
-    <div class="viewpane" id="view-org"><div class="placeholder" id="ph-org">Organizations view</div></div>
-    <div class="viewpane" id="view-dat"><div class="placeholder" id="ph-dat">Data view</div></div>
+    <!-- M4 scaffold: 내용은 org-view.js/data-view.js가 각자 createOrgView()/createDataView()의
+         render()에서 채운다(main.js는 더 이상 이 두 div의 placeholder 텍스트를 직접 건드리지
+         않는다) — 정적 placeholder를 여기 남겨두면 첫 render() 이후 그 자식 엘리먼트가 통째로
+         지워지므로, 아예 빈 컨테이너로 둔다. -->
+    <div class="viewpane" id="view-org"></div>
+    <div class="viewpane" id="view-dat"></div>
   </div>
 
   <div class="tl">

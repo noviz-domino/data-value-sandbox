@@ -1,0 +1,18 @@
+/* 안내 투어(tour) 전용 스타일 (SPEC_M4 §5). 이 기능을 구현하는 에이전트만 이 파일을 건드린다 —
+   style.css/다른 view CSS와 접촉면을 만들지 않기 위해 일부러 최소한으로 시작한다.
+   색상은 phase2/app/js/palette.js / css/style.css의 :root 커스텀 프로퍼티만 쓸 것. */
+
+.tour-stub {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 20;
+  max-width: 260px;
+  padding: 10px 14px;
+  background: var(--riser);
+  border: 1px solid var(--hair-lit);
+  color: var(--ink);
+  font-family: var(--f-cond);
+  font-size: 12px;
+  cursor: pointer;
+}

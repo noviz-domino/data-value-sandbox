@@ -22,10 +22,18 @@ import { projectForInference, scopeFacilities, inferTargets, evaluateInference }
 // 주변 스캔(scan, SPEC_M4 §2 항목4) — 스코프를 아직 안 골랐을 때 지금 화면을 격자로 훑는다.
 // 이 모듈도 inference.js의 순수 함수만 써서 정답지 분리 경계를 그대로 지킨다(scan.js 상단 주석 참고).
 import { computeScanGrid, runScan } from "./scan.js";
+// M4 seam 분리(scaffold): 조직/데이터 뷰·투어는 각자 자기 모듈+CSS만 건드리도록 미리 잘라둔다.
+// 세 파일 모두 지금은 "coming soon" 스텁이고, 실제 구현은 뒤이은 별도 작업에서 채운다.
+// deps 계약은 세 모듈 상단 주석에 동일하게 적혀 있다(org-view.js 참고).
+import { createOrgView } from "./org-view.js";
+import { createDataView } from "./data-view.js";
+import { createTour } from "./tour.js";
 // ── 조직 팔레트 ────────────────────────────────────────────────────────────
 // M3-T4부터는 palette.js가 유일한 색상 소스다(map.js/analysis-view.js와 공유). 카드/
 // 타임라인/피드가 지도와 다른 색을 쓰는 어긋남을 palette.js 하나로 없앤다.
-import { ORG_COLORS } from "./palette.js";
+// HEX.evt — reveal이 꺼졌을 때 활동 피드가 쓰는 "조직 무관" 중립색(map.js의 RGB.evt와 같은 값,
+// 여기는 <div style="color:...">에 바로 쓸 CSS 색 문자열이 필요해 HEX 쪽을 가져온다).
+import { ORG_COLORS, HEX } from "./palette.js";
 // i18n (SPEC_M4 §1.4): 이 파일이 직접 그리는(index.html 정적 라벨 포함) 문자열은 이 파일이
 // register() 한다. M3까지의 "영어 (한국어 괄호)" gloss는 여기서도 전부 폐기한다(§1.1).
 import { t, getLang, setLang, onLangChange, register } from "./i18n.js";
@@ -56,10 +64,13 @@ register({
     "app.timeWindow": "기간",
     "app.winStart": "시작",
     "app.winEnd": "종료",
-    "app.orgPlaceholder": "조직 뷰 — 준비 중",
-    "app.datPlaceholder": "데이터 뷰 — 준비 중",
     "app.cellEv": "사건",
     "app.cellRad": "반경",
+    // reveal 꺼짐 상태에서 #cells가 조직 카드 대신 보여주는 중립 요약(Job1) — 조직 신원·개수·
+    // 반경은 전혀 드러내지 않고, 분석관이 실제로 가진 두 수치(시간창 내 전체 사건 수, 지금
+    // 스코프 안 후보 시설 수)만 보여준다.
+    "app.cellsNeutralEvents": "시간창 내 사건",
+    "app.cellsNeutralFacilities": "범위 내 후보 시설",
     "app.daysLeft": "{days}일 남음",
     "app.bootTerrain": "지형 마스크",
     "app.bootLoaded": "로드됨",
@@ -98,10 +109,10 @@ register({
     "app.timeWindow": "Time window",
     "app.winStart": "START",
     "app.winEnd": "END",
-    "app.orgPlaceholder": "Organizations view — coming soon",
-    "app.datPlaceholder": "Data view — coming soon",
     "app.cellEv": "EV",
     "app.cellRad": "RAD",
+    "app.cellsNeutralEvents": "EVENTS IN WINDOW",
+    "app.cellsNeutralFacilities": "CANDIDATE FACILITIES IN SCOPE",
     "app.daysLeft": "{days}D LEFT",
     "app.bootTerrain": "TERRAIN MASK",
     "app.bootLoaded": "LOADED",
@@ -186,6 +197,8 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   const winStartEl = document.getElementById("win-start");
   const winEndEl = document.getElementById("win-end");
   const cellsEl = document.getElementById("cells");
+  // 상태바의 "Cells 3" — 조직 개수도 지휘 계층 정보라 reveal이 꺼지면 블록째 숨긴다(Job1).
+  const statCellsEl = document.getElementById("stat-cells");
   const resultsEl = document.getElementById("results");
   const feedEl = document.getElementById("feed");
   const bootEl = document.getElementById("boot");
@@ -259,8 +272,8 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     document.getElementById("lbl-win-start").textContent = t("app.winStart");
     document.getElementById("lbl-win-end").textContent = t("app.winEnd");
 
-    document.getElementById("ph-org").textContent = t("app.orgPlaceholder");
-    document.getElementById("ph-dat").textContent = t("app.datPlaceholder");
+    // ph-org/ph-dat 정적 placeholder는 M4 scaffold에서 제거했다 — #view-org/#view-dat 내용은
+    // 이제 org-view.js/data-view.js가 각자 자기 i18n 키(org.comingSoon/dat.comingSoon)로 그린다.
 
     // 조직 카드(#cells)의 EV/RAD 라벨 — 값(data-ev/data-rad)은 chrome()이 매 프레임 채우지만
     // 라벨 자체는 카드를 만들 때 한 번만 쓰인 정적 텍스트라 여기서 다시 적용해야 한다.
@@ -269,6 +282,12 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
       if (rows[0]) rows[0].textContent = t("app.cellEv");
       if (rows[1]) rows[1].textContent = t("app.cellRad");
     });
+    // reveal 꺼짐 상태의 중립 요약(#cells-neutral) 라벨 — reveal 켜짐 상태에선 이 엘리먼트 자체가
+    // DOM에 없으므로 querySelector가 null을 돌려주고 아무 일도 하지 않는다.
+    const neutralEvLbl = cellsEl.querySelector("[data-lbl-neutral-ev]");
+    const neutralFacLbl = cellsEl.querySelector("[data-lbl-neutral-fac]");
+    if (neutralEvLbl) neutralEvLbl.textContent = t("app.cellsNeutralEvents");
+    if (neutralFacLbl) neutralFacLbl.textContent = t("app.cellsNeutralFacilities");
 
     // 언어 토글 자체의 활성 표시(리드 악센트) — 라벨(한국어/English)은 항상 고정이다(SPEC_M4 §1.6).
     langToggleEl.querySelectorAll(".lang-btn").forEach((b) => {
@@ -370,6 +389,25 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   // 드래그로 바꿔도 비용이 크지 않다.
   let scopePreview = { eventCount: 0, candidateCount: 0, radiusKm: 0 };
 
+  // ── M4 seam(org/data-view, tour)이 구독하는 "지금 시간창/스코프" 상태 ───────────────────
+  // 이 앱은 window/scope를 여러 곳(드래그, 반경 입력, Analyze, 스캔 결과 선택, 재생 루프)에서
+  // 바꾸는데, 그 모든 경로가 결국 refreshScopePreview()를 거친다 — 그래서 알림도 그 한 곳에서만
+  // 보낸다(중복 배선 없이 "상태가 실제로 갱신됐다"는 한 지점).
+  const viewStateSubscribers = new Set();
+  function getViewState() {
+    return { window: { startDay: windowStart, endDay: windowEnd }, scope: scopeDraft || scope };
+  }
+  function notifyViewStateSubscribers() {
+    const state = getViewState();
+    viewStateSubscribers.forEach((cb) => {
+      try {
+        cb(state);
+      } catch (err) {
+        console.error("[view deps] onStateChange 구독자에서 예외 발생", err);
+      }
+    });
+  }
+
   /**
    * 스코프/시간창이 바뀔 때마다 부른다. 비용이 큰 inferTargets는 절대 여기서 돌리지 않는다(§2
    * 항목3 "runs when the user asks for it, not continuously") — 대신
@@ -421,6 +459,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
       radiusKm: active.radiusKm,
     };
     renderResults();
+    notifyViewStateSubscribers(); // org/data-view·tour가 구독 중이면 최신 window/scope를 알린다.
   }
 
   /** Analyze — 명시적 버튼(§2 항목3). 이 함수 안에서만 inferTargets(비용이 큰 실제 추론)를 돌린다. */
@@ -608,35 +647,62 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   winStartEl.onchange = () => setWindow(Number(winStartEl.value), windowEnd);
   winEndEl.onchange = () => setWindow(windowStart, Number(winEndEl.value));
 
-  // ── 조직 카드 (#cells) ───────────────────────────────────────────────
-  // 프로토타입 §404-412의 마크업을 그대로 포팅. data-ev/data-rad/data-dir을 이후 chrome()에서 갱신.
-  const cellEls = ORGS.map((org) => {
-    const d = document.createElement("div");
-    d.className = "cell";
-    d.tabIndex = 0;
-    d.style.setProperty("--c", ORG_COLORS[org.key]);
-    d.innerHTML =
-      '<div class="nm">' + org.key + '</div>' +
-      '<div class="rows">' +
-        '<div><i>EV</i> <span data-ev>000</span></div>' +
-        '<div><i>RAD</i> <span data-rad>000</span> KM</div>' +
-      '</div>' +
-      '<div class="dir" data-dir hidden></div>';
-    const toggle = () => {
-      if (visibleOrgs.has(org.key)) visibleOrgs.delete(org.key);
-      else visibleOrgs.add(org.key);
-      d.classList.toggle("off", !visibleOrgs.has(org.key));
-    };
-    d.onclick = toggle;
-    d.onkeydown = (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        toggle();
-      }
-    };
-    cellsEl.appendChild(d);
-    return d;
-  });
+  // ── 조직 카드 (#cells) — reveal에 따라 완전히 다른 두 마크업을 그린다 (SPEC_M4 §2 Job1) ──
+  // reveal ON: 조직별 카드(이름·EV·RAD·directive 배지) — 프로토타입 §404-412 마크업 그대로.
+  // reveal OFF: 조직 신원·개수·반경을 전혀 드러내지 않는 중립 요약 두 줄뿐. DOM에 org.key 문자열
+  // 자체가 아예 만들어지지 않는다(class="off"류의 CSS 은폐가 아니라 엘리먼트를 통째로 안 만든다).
+  // cellEls는 reveal이 켜져 있을 때만 실제 카드 엘리먼트를 담고, 꺼져 있으면 빈 배열이다 —
+  // chrome()이 매 프레임 이 배열 길이로 "지금 뭘 채워야 하는지" 판단한다.
+  let cellEls = [];
+
+  function renderCellsShell() {
+    cellsEl.innerHTML = "";
+    if (reveal) {
+      // 프로토타입 §404-412의 마크업을 그대로 포팅. data-ev/data-rad/data-dir을 이후 chrome()에서 갱신.
+      cellEls = ORGS.map((org) => {
+        const d = document.createElement("div");
+        d.className = "cell";
+        d.tabIndex = 0;
+        d.style.setProperty("--c", ORG_COLORS[org.key]);
+        d.innerHTML =
+          '<div class="nm">' + org.key + '</div>' +
+          '<div class="rows">' +
+            '<div><i>EV</i> <span data-ev>000</span></div>' +
+            '<div><i>RAD</i> <span data-rad>000</span> KM</div>' +
+          '</div>' +
+          '<div class="dir" data-dir hidden></div>';
+        const toggle = () => {
+          if (visibleOrgs.has(org.key)) visibleOrgs.delete(org.key);
+          else visibleOrgs.add(org.key);
+          d.classList.toggle("off", !visibleOrgs.has(org.key));
+        };
+        d.onclick = toggle;
+        d.onkeydown = (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+          }
+        };
+        cellsEl.appendChild(d);
+        return d;
+      });
+    } else {
+      // 중립 요약 — "분석관이 실제로 가진" 두 수치만. 값은 chrome()이 매 프레임 채운다.
+      cellEls = [];
+      const d = document.createElement("div");
+      d.className = "cells-neutral";
+      d.innerHTML =
+        '<div class="cells-neutral-row"><i data-lbl-neutral-ev></i> <span data-neutral-ev>0000</span></div>' +
+        '<div class="cells-neutral-row"><i data-lbl-neutral-fac></i> <span data-neutral-fac>00</span></div>';
+      cellsEl.appendChild(d);
+      d.querySelector("[data-lbl-neutral-ev]").textContent = t("app.cellsNeutralEvents");
+      d.querySelector("[data-lbl-neutral-fac]").textContent = t("app.cellsNeutralFacilities");
+    }
+  }
+  renderCellsShell();
+  // 부팅 시 기본값은 reveal=false이므로, 조직 개수를 드러내는 상태바 "Cells 3"도 처음부터 숨긴다
+  // (이후로는 rvEl.onclick이 토글마다 이 값을 맞춰준다).
+  statCellsEl.hidden = !reveal;
 
   // ── DTG(date-time-group) 문자열. 프로토타입 dtgs()와 동일한 형식(임의의 "시각"을 day*7%24로 흉내). ─
   function dtgString(d) {
@@ -655,33 +721,52 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     dtgEl.textContent = dtgString(day);
     sEvEl.textContent = pad(visibleEvents.length, 4);
 
-    const cnt = Object.fromEntries(ORGS.map((o) => [o.key, 0]));
-    visibleEvents.forEach((e) => { cnt[e.org] = (cnt[e.org] || 0) + 1; });
+    // reveal ON: 조직별 카드(EV/RAD/directive)를 채운다. reveal OFF: cellEls는 비어 있고(위
+    // renderCellsShell 참고) 대신 중립 요약 두 수치(시간창 내 전체 사건 수, 스코프 내 후보 시설
+    // 수)만 채운다 — 어느 쪽도 org 이름/개수/반경을 드러내지 않는다(Job1).
+    if (reveal) {
+      const cnt = Object.fromEntries(ORGS.map((o) => [o.key, 0]));
+      visibleEvents.forEach((e) => { cnt[e.org] = (cnt[e.org] || 0) + 1; });
 
-    ORGS.forEach((org, i) => {
-      const p = periods.find((q) => q.org === org.key && day >= q.startDay && day < q.endDay);
-      const directiveKey = p ? p.directive : "CONSOLIDATE"; // 활성 기간이 없을 때의 폴백. map.js DEFAULT_DIRECTIVE와 동일 규칙.
-      const dirDef = DIRECTIVES[directiveKey];
-      const el = cellEls[i];
-      el.querySelector("[data-ev]").textContent = pad(cnt[org.key], 3);
-      el.querySelector("[data-rad]").textContent = pad(Math.round(org.baseRadius * dirDef.radiusMult), 3);
-      const dd = el.querySelector("[data-dir]");
-      dd.hidden = !reveal;
-      // directive 이름(p.directive, 예: EXPAND)은 데이터셋 값이라 언어와 무관하게 원문 그대로 둔다
-      // (SPEC_M4 §1.2) — "{days}일 남음"/"{days}D LEFT" 부분만 t()로 번역한다.
-      if (reveal && p) dd.textContent = p.directive + " · " + t("app.daysLeft", { days: pad(p.endDay - day, 3) });
-    });
+      ORGS.forEach((org, i) => {
+        const p = periods.find((q) => q.org === org.key && day >= q.startDay && day < q.endDay);
+        const directiveKey = p ? p.directive : "CONSOLIDATE"; // 활성 기간이 없을 때의 폴백. map.js DEFAULT_DIRECTIVE와 동일 규칙.
+        const dirDef = DIRECTIVES[directiveKey];
+        const el = cellEls[i];
+        el.querySelector("[data-ev]").textContent = pad(cnt[org.key], 3);
+        el.querySelector("[data-rad]").textContent = pad(Math.round(org.baseRadius * dirDef.radiusMult), 3);
+        const dd = el.querySelector("[data-dir]");
+        dd.hidden = !reveal;
+        // directive 이름(p.directive, 예: EXPAND)은 데이터셋 값이라 언어와 무관하게 원문 그대로 둔다
+        // (SPEC_M4 §1.2) — "{days}일 남음"/"{days}D LEFT" 부분만 t()로 번역한다.
+        if (reveal && p) dd.textContent = p.directive + " · " + t("app.daysLeft", { days: pad(p.endDay - day, 3) });
+      });
+    } else {
+      const neutralEv = cellsEl.querySelector("[data-neutral-ev]");
+      const neutralFac = cellsEl.querySelector("[data-neutral-fac]");
+      if (neutralEv) neutralEv.textContent = pad(visibleEvents.length, 4);
+      if (neutralFac) neutralFac.textContent = pad(scopePreview.candidateCount, 2);
+    }
 
     // 피드: 시간창 안 이벤트 중 최신 11개(day 내림차순)를 보여준다. 이벤트 수가 수천 개라도
     // 창 하나에 든 것만 다루므로 매 프레임 다시 만들어도 가볍다(누적 포인터가 더 이상 필요 없다).
+    // reveal OFF: 조직 태그(e.org)는 좌표만큼이나 "이 사건을 누가 저질렀는가" — 바로 이 도구가
+    // 분석관에게 추론하라고 요구하는 답이다. 그래서 색만 지우는 게 아니라 <em> 마커 안의 org
+    // 텍스트 자체를 만들지 않는다(빈 문자열도 아니고 DOM 노드가 없음). 대신 지도의 "중립 사건색"
+    // (RGB.evt/HEX.evt)과 같은 값으로 칠한 무표정 점 마커(•)만 남겨 지도-피드 시각 언어를 맞춘다.
+    // reveal ON: 기존처럼 조직 약칭(4자)을 org 색으로 그대로 보여준다(Job1 이전 동작과 동일).
     const recent = visibleEvents.slice().sort((a, b) => b.day - a.day).slice(0, 11);
     feedEl.innerHTML = recent
-      .map(
-        (e) =>
-          '<div><em style="color:' + ORG_COLORS[e.org] + '">' + e.org.slice(0, 4) + "</em> " +
+      .map((e) => {
+        const markerHtml = reveal
+          ? '<em style="color:' + ORG_COLORS[e.org] + '">' + e.org.slice(0, 4) + "</em> "
+          : '<em style="color:' + HEX.evt + '">•</em> ';
+        return (
+          "<div>" + markerHtml +
           Math.abs(e.lat).toFixed(1) + (e.lat < 0 ? "S" : "N") + " " +
           e.lon.toFixed(1) + "E · " + e.method.toUpperCase() + " · " + e.target.slice(0, 5).toUpperCase() + "</div>"
-      )
+        );
+      })
       .join("");
   }
 
@@ -768,6 +853,12 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     // 카드(#cells)의 방향(dir) 배지도 여전히 reveal에 반응한다(dd.hidden = !reveal, chrome() 참고).
     // 결과 패널의 ANSWER KEY 배지는 reveal에 반응하지만(computeAnswerKeyFacilityIds, renderResults
     // 참고) 추론 자체(랭킹/점수)는 reveal과 무관하게 항상 그대로다 — 정답지 분리 경계, SPEC_M3 §3.
+    // Job1: #cells는 reveal이 조직 카드 ↔ 중립 요약 중 어느 마크업을 그릴지까지 가른다 — DOM을
+    // 통째로 다시 만들어야 하므로 매 프레임이 아니라 여기서(토글되는 순간) 딱 한 번 다시 짓는다.
+    renderCellsShell();
+    applyI18n(); // 새로 지은 카드/중립 요약의 정적 라벨(EV/RAD 또는 두 줄 요약 라벨)을 즉시 채운다.
+    // 상태바의 "Cells 3"도 조직 개수라는 지휘 계층 정보라 reveal과 함께 감춘다.
+    statCellsEl.hidden = !reveal;
     renderResults(); // reveal 토글 즉시 결과 패널의 답 배지를 갱신한다 — 지도는 다음 setFrame에서 갱신.
   };
 
@@ -786,23 +877,51 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     };
   });
 
+  // ── M4 seam(scaffold): org-view.js/data-view.js/tour.js에 공통으로 넘기는 deps ───────────
+  // 계약은 세 모듈 상단 주석에 토씨 하나까지 동일하게 적혀 있다(org-view.js 참고) — 여기 모양을
+  // 고치면 반드시 그 세 주석 블록도 같이 고칠 것.
+  const viewDeps = {
+    result: { events, campaigns, facilities, periods, days, startDate: D0 },
+    seed: SEED,
+    queryEvents,
+    getState: getViewState,
+    onStateChange: (cb) => {
+      viewStateSubscribers.add(cb);
+      return () => viewStateSubscribers.delete(cb);
+    },
+    // 지금은 seed만 반영해 simulateFn을 다시 돌리는 얇은 통로다 — organizations.js §7 파라미터
+    // (base/branches/baseRadius/seasonal/targetPreference 등)나 M4 §3.2 신호 강도 슬라이더를
+    // 실제로 오버라이드하는 기능은 simulate() 시그니처 자체를 넓혀야 하는 별도 작업이다
+    // (org-view.js 상단 주석 참고). 이 함수는 그 확장이 걸어 들어올 자리를 미리 파둔 것뿐이다.
+    requestRerun(opts = {}) {
+      const nextSeed = opts.seed != null ? opts.seed : SEED;
+      console.info("[viewDeps.requestRerun] seed=" + nextSeed + " 로 simulate()를 다시 돌린다(스텁 — 결과를 앱 상태에 아직 반영하지 않는다).");
+      return simulateFn(nextSeed);
+    },
+  };
+
   // ── 뷰 라우팅(SIM/ORG/ANL/DAT) ───────────────────────────────────────
   // .wrap[data-view]를 nav 버튼 클릭에 맞춰 바꾸면 style.css의 .wrap:not([data-view="sim"]) 규칙이
   // stage/side/시간창을 숨기고 해당 .viewpane(#view-anl/#view-org/#view-dat)만 보여준다.
-  // ANL은 처음 진입할 때 한 번만 createAnalysisView().render()를 호출해 runAblation() 결과를 그린다
-  // (analysis-view.js 안에서 result를 캐싱하므로 다시 눌러도 재계산하지 않는다).
+  // 셋 다 처음 진입할 때 한 번만 render()를 호출한다(analysis-view.js는 runAblation() 결과를
+  // 자체 캐싱하고, org/data-view는 아직 스텁이라 다시 그려도 비용이 없지만 같은 패턴을 맞춘다).
   const wrapEl = document.querySelector(".wrap");
   const anlView = createAnalysisView(document.getElementById("view-anl"), { events, periods });
-  let anlRendered = false;
+  const orgView = createOrgView(document.getElementById("view-org"), viewDeps);
+  const datView = createDataView(document.getElementById("view-dat"), viewDeps);
+  // 투어는 특정 뷰에 속하지 않는 오버레이라 컨테이너 없이 deps만 받는다(tour.js 상단 주석 참고).
+  // SPEC_M4 §5(첫 방문 4단계 안내)의 실제 구현·"restart tour" 어포던스는 별도 작업의 몫이라
+  // 지금은 인스턴스만 만들어 두고 자동으로 start()하지 않는다.
+  const tour = createTour(viewDeps);
+  const viewRendered = { anl: false, org: false, dat: false };
   document.querySelectorAll("[data-view-btn]").forEach((btn) => {
     btn.onclick = () => {
       const view = btn.dataset.viewBtn;
       wrapEl.dataset.view = view;
       document.querySelectorAll("[data-view-btn]").forEach((b) => b.classList.toggle("sel", b === btn));
-      if (view === "anl" && !anlRendered) {
-        anlRendered = true;
-        anlView.render();
-      }
+      if (view === "anl" && !viewRendered.anl) { viewRendered.anl = true; anlView.render(); }
+      if (view === "org" && !viewRendered.org) { viewRendered.org = true; orgView.render(); }
+      if (view === "dat" && !viewRendered.dat) { viewRendered.dat = true; datView.render(); }
     };
   });
 

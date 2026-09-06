@@ -29,6 +29,10 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
 .statusbar .id{font-family:var(--f-cond);font-weight:600;letter-spacing:.16em;
   text-transform:uppercase;color:var(--ink);font-size:12px;white-space:nowrap}
 .stat{display:flex;gap:7px;align-items:baseline;white-space:nowrap}
+/* .stat{display:flex}는 author 규칙이라 detail(hidden 속성 기본값)의 UA 규칙([hidden]{display:none})을
+   원산지(origin) 우선순위로 항상 이긴다 — 그래서 el.hidden=true만으로는 실제로 안 사라진다(Job1에서
+   #stat-cells 발견). [hidden]을 여기서 다시 명시해 되찾는다. */
+.stat[hidden]{display:none}
 .stat b{font-weight:400;color:var(--ink-mute);font-family:var(--f-cond);
   letter-spacing:.1em;text-transform:uppercase;font-size:10px}
 .stat span{font-family:var(--f-mono);font-size:11px;color:var(--ink-dim)}
@@ -110,6 +114,14 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
 .cell .rows i{color:var(--ink-mute);font-style:normal}
 .cell .dir{margin-top:5px;font-family:var(--f-mono);font-size:10.5px;
   color:var(--ink);border:1px solid var(--hair-lit);padding:2px 7px;display:inline-block}
+/* ── reveal 꺼짐 상태의 #cells 중립 요약 (Job1: ground-truth 분리) ───────────────────────
+   조직 카드(.cell)와 자리는 같지만 신원·개수·반경을 전혀 담지 않는다 — 분석관이 실제로
+   가진 두 수치(시간창 내 사건 수·스코프 내 후보 시설 수)만 보여준다. */
+.cells-neutral{padding:2px 0;display:flex;flex-direction:column;gap:6px}
+.cells-neutral-row{font-family:var(--f-mono);font-size:11px;color:var(--ink-dim)}
+.cells-neutral-row i{color:var(--ink-mute);font-style:normal;font-family:var(--f-cond);
+  font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:10px}
+.cells-neutral-row span{color:var(--ink);margin-left:6px}
 /* ── 결과(results) 패널 (M3-T3, SPEC_M3 §6.4) ─────────────────────────────────────────── */
 .results{border-top:1px solid var(--hair);padding:10px 13px;max-height:290px;overflow-y:auto}
 .res-meta{display:flex;flex-wrap:wrap;gap:10px;font-family:var(--f-mono);font-size:10.5px;
