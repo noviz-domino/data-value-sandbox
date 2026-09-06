@@ -1,15 +1,24 @@
-// 최종 배선(wiring) 모듈 — M1의 모든 조각(rng/geo/organizations/simulation/map/timeline)을
+// 최종 배선(wiring) 모듈 — 모든 조각(rng/geo/organizations/simulation/map/window-control)을
 // 하나의 실행되는 앱으로 연결한다. phase2/prototype/index.html의 검증된 재생 루프·크롬(chrome)
 // 갱신·부트 시퀀스·활동 피드·조직 카드·컨트롤 로직을 그대로 포팅하되, Canvas 2D 직접 그리기
-// 대신 map.js(deck.gl)·timeline.js(Canvas 타임라인만) 모듈을 호출하도록 다시 배선했다.
-// BUILD_PLAN.md T5.
+// 대신 map.js(deck.gl)·window-control.js(Canvas 시간창만) 모듈을 호출하도록 다시 배선했다.
+// BUILD_PLAN.md T5. (M3-T3에서 timeline.js를 시간창 컨트롤로 교체하고 삭제했다 — SPEC_M3 §6.1.)
+//
+// M3-T3(SPEC_M3.md §6)부터: 타임라인 바를 시간창(window) 컨트롤로 바꾸고(§6.1), 이벤트 접근을
+// queryEvents() seam 하나로 모으고(§6.2), 지도에 스코프(scope) 선택과 결과(results) 패널을
+// 얹어 표적 추론(target inference)을 실제로 조작할 수 있게 한다(§6.3~6.4).
 
-import { makeLandTest } from "./geo.js";
+import { makeLandTest, haversineKm } from "./geo.js";
 import { ORGS, DIRECTIVES } from "./organizations.js";
 import { simulate } from "./simulation.js";
 import { createMap } from "./map.js";
-import { createTimeline } from "./timeline.js";
+import { createWindowControl } from "./window-control.js";
 import { createAnalysisView } from "./analysis-view.js";
+import { createEventQuery } from "./query.js";
+import { createResultsPanel } from "./results-panel.js";
+// 정답지 분리(ground truth separation, SPEC_M3 §3): 이 앱에서 추론 관련 함수를 부르는 곳은
+// 여기(main.js)뿐이다. inference.js 자체는 절대 손대지 않는다(다른 에이전트가 편집 중).
+import { projectForInference, scopeFacilities, inferTargets, evaluateInference } from "./inference.js";
 // ── 조직 팔레트 ────────────────────────────────────────────────────────────
 // M3-T4부터는 palette.js가 유일한 색상 소스다(map.js/analysis-view.js와 공유). 카드/
 // 타임라인/피드가 지도와 다른 색을 쓰는 어긋남을 palette.js 하나로 없앤다.
@@ -20,24 +29,51 @@ const D0 = Date.UTC(2026, 0, 1);
 
 const SEED = 20260903;
 
+// 결과 패널이 항상 켜는 전체 특징 집합(P+E+C) — 실제 분석관이라면 가진 신호를 다 쓸 것이므로,
+// 라이브 UI에서는 사다리(P/PE/PEC)를 굳이 토글하지 않는다(사다리 비교는 evaluateInference의 몫).
+const FULL_FEATURES = { proximity: true, encirclement: true, convergence: true };
+
+// 결과 패널/지도 강조에서 "in-band 이벤트"를 뽑기 위한 시각화 전용 상수. inference.js §5.2의
+// 고리형(ring) 커널을 그대로 미러링한 값이지만(peak 14km, sigma 11km, 문턱 0.15), 이건 표시용
+// 필터일 뿐 softmax·encirclement·convergence 같은 실제 채점 로직은 전혀 재구현하지 않는다 —
+// "어느 이벤트를 하이라이트할지" 정도만 결정한다.
+const RING_PEAK_KM = 14;
+const RING_SIGMA_KM = 11;
+const IN_BAND_WEIGHT = 0.15;
+function ringWeight(d) {
+  const z = d - RING_PEAK_KM;
+  return Math.exp(-(z * z) / (2 * RING_SIGMA_KM * RING_SIGMA_KM));
+}
+/** facility를 뒷받침하는 in-band 이벤트만 골라낸다(표시용). events는 이미 projectForInference()를 거친 것. */
+function inBandEventsFor(facility, events) {
+  if (!facility) return [];
+  return events.filter((e) => ringWeight(haversineKm(facility.lat, facility.lon, e.lat, e.lon)) > IN_BAND_WEIGHT);
+}
+
 /** "01" 처럼 두 자리로 왼쪽을 0으로 채운다. String(n).padStart(w,"0")의 짧은 래퍼. */
 const pad = (n, w) => String(n).padStart(w, "0");
 
-// ── 부트: 세 개의 GeoJSON을 fetch하고, 코스 land test를 만들고, simulate()를 실행한다 ────
+// ── 부트: GeoJSON·facilities.json을 fetch하고, 코스 land test를 만들고, simulate()를 실행한다 ──
 async function boot() {
-  // index.html 기준 상대 경로. phase2/app/data/에 T1에서 이미 커밋되어 있다.
-  const [ne50land, ne50coast, ne110land] = await Promise.all([
+  // index.html 기준 상대 경로. phase2/app/data/에 T1/M3-T0에서 이미 커밋되어 있다.
+  const [ne50land, ne50coast, ne110land, facilitiesRaw] = await Promise.all([
     fetch("data/ne_50m_land.geojson").then((r) => r.json()),
     fetch("data/ne_50m_coastline.geojson").then((r) => r.json()),
     fetch("data/ne_110m_land.geojson").then((r) => r.json()),
+    fetch("data/facilities.json").then((r) => r.json()),
   ]);
 
   // 이벤트 생성 시 안/밖 판정에 쓰는 코스(coarse) 육지 테스트. 화면 표시는 ne50land/ne50coast를
   // map.js에 그대로 넘겨 따로 쓴다(T1 주석대로 "생성용"과 "표시용"을 분리).
   const landTest = makeLandTest(ne110land);
-  const { events, periods, byDay, days } = simulate({ seed: SEED, landTest });
+  // withCampaigns:true — M3의 표적 추론 기능을 켠다(SPEC_M3 §4). facilities는 simulate()가
+  // JSON.parse된 원본 객체를 그대로 기대한다(내부에서 .facilities로 배열을 꺼낸다).
+  // evaluateInference(§5.3 재작성판)는 시드마다 스스로 simulate()를 다시 돌리므로(내부에서
+  // 5개 시드를 파생), 같은 조립을 하는 simulateFn을 만들어 넘긴다 — inference.js는 손대지 않는다.
+  const simulateFn = (seed) => simulate({ seed, landTest, facilities: facilitiesRaw, withCampaigns: true });
+  const { events, periods, byDay, days, campaigns, facilities } = simulateFn(SEED);
 
-  // byDay[day][orgIndex]의 전체 최댓값 — 타임라인 히스토그램 스케일링에 쓴다(timeline.js maxPerDay).
+  // byDay[day][orgIndex]의 전체 최댓값 — 카드/시간창의 스케일링 참고용으로 남겨둔다.
   let maxPerDay = 0;
   for (let d = 0; d < days; d++) {
     for (let i = 0; i < ORGS.length; i++) {
@@ -45,14 +81,17 @@ async function boot() {
     }
   }
 
-  runApp({ events, periods, byDay, days, maxPerDay, landGeo: ne50land, coastGeo: ne50coast });
+  runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities, simulateFn, landGeo: ne50land, coastGeo: ne50coast });
 }
 
-function runApp({ events, periods, byDay, days, maxPerDay, landGeo, coastGeo }) {
+function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities, simulateFn, landGeo, coastGeo }) {
   // ── DOM 참조 ─────────────────────────────────────────────────────────
   const mapEl = document.getElementById("map");
-  const tlc = document.getElementById("tlc");
+  const wac = document.getElementById("wac");
+  const winStartEl = document.getElementById("win-start");
+  const winEndEl = document.getElementById("win-end");
   const cellsEl = document.getElementById("cells");
+  const resultsEl = document.getElementById("results");
   const feedEl = document.getElementById("feed");
   const bootEl = document.getElementById("boot");
   const rPosEl = document.getElementById("r-pos");
@@ -63,77 +102,195 @@ function runApp({ events, periods, byDay, days, maxPerDay, landGeo, coastGeo }) 
   const sModeEl = document.getElementById("s-mode");
   const ppEl = document.getElementById("pp");
   const rvEl = document.getElementById("rv");
+  const scopeBtnEl = document.getElementById("scope-btn");
+  const scopeRadiusEl = document.getElementById("scope-radius");
+
+  // ── 데이터 접근 seam (SPEC_M3 §6.2) ───────────────────────────────────
+  // 이 앱의 모든 뷰는 이제부터 events 배열을 직접 filter/index하지 않고 queryEvents()만 부른다.
+  const { queryEvents } = createEventQuery(events);
+  const facilitiesById = new Map(facilities.map((f) => [f.id, f]));
+
+  // ── 시간창(time window) 상태 (SPEC_M3 §6.1) ───────────────────────────
+  // 기본값: 전체 구간(days)의 "가장 최근 100일". 실 스트리밍 소스는 처음부터 끝까지 다 아는
+  // 고정 데이터셋이 아니라 최근 구간만 들여다보는 게 자연스럽다는 게 타임라인 바를 없앤 이유.
+  const DEFAULT_WINDOW_WIDTH = 100;
+  let windowStart = Math.max(0, days - DEFAULT_WINDOW_WIDTH);
+  let windowEnd = days - 1;
+  let visibleEvents = []; // 현재 시간창 안의 이벤트(=queryEvents({window}) 결과) 캐시
 
   // ── 재생 상태 ────────────────────────────────────────────────────────
-  // 프로토타입의 전역 변수(day, playing, speed, reveal, vis[])를 그대로 옮긴다.
-  let day = 0;
-  let playing = true;
+  let playing = false; // 기본은 정지 — "가장 최근 100일"을 보여주는 정적 화면이 기본 상태다.
   let speed = 7;
   let reveal = false;
   const visibleOrgs = new Set(ORGS.map((o) => o.key)); // 전부 보이는 상태로 시작
 
-  // events는 simulate()가 day 오름차순으로 채워 넣으므로(day 루프 → org 루프 → branch 루프),
-  // 포인터(ai)를 한쪽 방향으로만 전진시키면서 "오늘까지 발생한 사건"을 누적 집계할 수 있다.
-  // 프로토타입의 ai/cnt/lastFed 포인터와 동일한 아이디어.
-  let ai = 0; // events[0..ai) 가 현재 day까지 이미 "발생"한 사건
-  const cnt = Object.fromEntries(ORGS.map((o) => [o.key, 0])); // 조직별 누적 이벤트 수
-  let lastFed = 0; // feed에 이미 그려 넣은 이벤트 개수(ai를 따라감)
+  // ── 스코프(scope) 선택 상태 (SPEC_M3 §6.3) ────────────────────────────
+  // 기본 스코프: NORTHWIND 거점 부근(여러 시설이 몰려 있는 지대), 반경 160km. 사용자가 드래그로
+  // 다시 지정하기 전에도 결과 패널이 빈 화면이 아니라 실제 후보를 보여주도록 하는 시작값이다.
+  let scope = { lat: ORGS[0].base[0], lon: ORGS[0].base[1], radiusKm: 160 };
+  let scopeDraft = null; // 드래그 중 실시간 미리보기
+  let scopeMode = false; // "Set scope" 버튼으로 진입하는 드래그 대기 상태
+  let selectedFacilityId = null;
+  let inferenceFrame = {}; // map.setFrame에 매 프레임 합쳐 넣을 스코프/시설/강조 레이어 데이터
 
-  /** ai/cnt/lastFed/피드를 전부 0으로 되돌린다(뒤로 스크럽할 때만 필요). */
-  function resetAccum() {
-    ai = 0;
-    lastFed = 0;
-    ORGS.forEach((o) => (cnt[o.key] = 0));
-    feedEl.innerHTML = "";
+  // 직전(§5.3 재작성판) evaluateInference 결과 — 결과 패널의 "오경보율 문턱에서의 탐지율" 참고값으로
+  // 1회만 계산해 캐싱한다. evaluateInference는 5개 시드를 스스로 파생해 다시 simulate()를 돌리므로
+  // (inference.js는 손대지 않고, simulateFn만 넘긴다) 약간의 시간이 걸릴 수 있어 부팅 이후 한 박자
+  // 늦게(setTimeout) 계산하고, 끝나면 결과 패널을 다시 그린다.
+  let cachedEval = null; // { operatingFalseAlarmRate, detectionAt10FAR }
+  function runCachedEvaluation() {
+    try {
+      const evalResult = evaluateInference({ simulateFn, seed: SEED });
+      cachedEval = {
+        // §5.3 재작성판: 문턱 자체가 "통제 구간 오경보율 10%"가 되도록 잡히므로, 오경보율은
+        // 측정치가 아니라 상수(FALSE_ALARM_TARGET_RATE=0.1)다 — 그 문턱에서의 탐지율이 실제 측정치.
+        operatingFalseAlarmRate: 0.1,
+        detectionAt10FAR: evalResult.runs.PEC.detectionAt10FAR,
+      };
+      recomputeInference();
+    } catch (err) {
+      console.error("evaluateInference 실패 — 결과 패널에 참고 지표를 표시하지 않는다.", err);
+    }
+  }
+  setTimeout(runCachedEvaluation, 0);
+
+  const resultsPanel = createResultsPanel(resultsEl, {
+    onSelect: (fid) => {
+      selectedFacilityId = fid;
+      recomputeInference();
+    },
+  });
+
+  /** 스코프/시간창/선택이 바뀔 때마다 inferTargets를 다시 돌리고, 지도 레이어·결과 패널을 갱신한다. */
+  function recomputeInference() {
+    const active = scopeDraft || scope;
+    const win = { startDay: windowStart, endDay: windowEnd };
+    // 원본(org 포함) 이벤트는 seam(queryEvents) 하나로만 얻는다 — 여기서 events 배열을 직접 filter하지 않는다.
+    const rawScoped = queryEvents({ scope: active, window: win });
+    // 정답지 분리 경계: org 제거는 여기 한 곳에서만 한다. 추론 엔진에는 이 결과만 넘긴다.
+    const projected = projectForInference(rawScoped);
+    const scopedFacilities = scopeFacilities(facilities, active);
+    const result = inferTargets({ events: projected, facilities: scopedFacilities, features: FULL_FEATURES });
+    const supportingEvents = selectedFacilityId
+      ? inBandEventsFor(facilitiesById.get(selectedFacilityId), projected)
+      : [];
+
+    inferenceFrame = {
+      scope,
+      scopeDraft,
+      candidateFacilities: scopedFacilities,
+      selectedFacilityId,
+      supportingEvents,
+    };
+
+    resultsPanel.render({
+      ranked: result.ranked,
+      eventCount: result.eventCount,
+      warnings: result.warnings,
+      radiusKm: active.radiusKm,
+      facilitiesById,
+      selectedFacilityId,
+      scopeCenter: active,
+      evaluation: cachedEval,
+    });
   }
 
-  /**
-   * 현재 day를 newDay로 옮긴다. newDay가 지금보다 과거면(스크럽으로 되감기) 누적 상태를
-   * 전부 리셋한 뒤 처음부터 다시 훑는다 — events가 최대 수천 개라 매번 처음부터 훑어도 가볍다.
-   * newDay가 미래거나 같으면 ai 포인터를 그 지점까지만 마저 전진시킨다(재생 루프의 정상 경로).
-   */
-  function setDay(newDay) {
-    if (newDay < day) resetAccum();
-    day = newDay;
-    while (ai < events.length && events[ai].day <= day) {
-      cnt[events[ai].org]++;
-      ai++;
-    }
+  // ── 시간창이 바뀔 때 공통으로 해야 할 일 ───────────────────────────────
+  function setWindow(newStart, newEnd) {
+    const s = Math.max(0, Math.min(days - 1, Math.round(newStart)));
+    const e = Math.max(s, Math.min(days - 1, Math.round(newEnd)));
+    windowStart = s;
+    windowEnd = e;
+    visibleEvents = queryEvents({ window: { startDay: windowStart, endDay: windowEnd } });
+    winStartEl.value = windowStart;
+    winEndEl.value = windowEnd;
+    recomputeInference(); // 스코프 안 이벤트 수는 시간창에도 좌우된다.
   }
 
   // ── 지도 hover 좌표 판독기 ────────────────────────────────────────────
   // deck.gl의 onHover(info)는 지도 밖이면 info.coordinate가 없다.
   function onHover(info) {
     if (!info || !info.coordinate) {
-      rPosEl.textContent = "--.-- -  ---.-- -";
+      rPosEl.textContent = "--.-- -  ---.-- -";
       return;
     }
     const [lo, la] = info.coordinate;
     rPosEl.textContent =
-      Math.abs(la).toFixed(2) + " " + (la < 0 ? "S" : "N") + "  " +
+      Math.abs(la).toFixed(2) + " " + (la < 0 ? "S" : "N") + "  " +
       Math.abs(lo).toFixed(2) + " " + (lo < 0 ? "W" : "E");
   }
 
-  const map = createMap(mapEl, { onHover, landGeo, coastGeo });
+  const map = createMap(mapEl, {
+    onHover,
+    onFacilityClick: (fid) => {
+      selectedFacilityId = selectedFacilityId === fid ? null : fid;
+      recomputeInference();
+    },
+    landGeo,
+    coastGeo,
+  });
 
-  // ── 타임라인 스크럽 ──────────────────────────────────────────────────
-  function onScrub(newDay) {
-    setDay(newDay);
-  }
-  const timeline = createTimeline(tlc, { onScrub });
+  // ── 스코프 선택: 클릭 후 바깥으로 드래그해 반경을 잡는다 (SPEC_M3 §6.3) ────────────
+  // deck.gl의 팬/줌 컨트롤러가 같은 캔버스에서 드래그를 가로채므로, 캡처(capture) 단계에서
+  // stopPropagation으로 먼저 가로채 deck.gl에 도달하기 전에 스코프 드래그로 처리한다.
+  scopeBtnEl.onclick = () => {
+    scopeMode = !scopeMode;
+    scopeBtnEl.classList.toggle("on", scopeMode);
+    mapEl.classList.toggle("scope-armed", scopeMode);
+  };
 
-  // timeline.js는 periods를 {o(조직 인덱스), d(지침), a(시작일), b(종료일)} 모양으로 기대하는데
-  // simulate()가 반환하는 periods는 {org(조직 key 문자열), directive, startDay, endDay} 모양이다.
-  // 두 인터페이스가 다르므로(BUILD_PLAN 인터페이스는 map.js 쪽만 고정했고 timeline.js 쪽은
-  // 자체 주석에 별도로 {o,d,a,b}를 못박아 뒀다) 여기서 한 번만 변환해 둔다.
-  const orgIndexOf = Object.fromEntries(ORGS.map((o, i) => [o.key, i]));
-  const tlPeriods = periods.map((p) => ({
-    o: orgIndexOf[p.org],
-    d: p.directive,
-    a: p.startDay,
-    b: p.endDay,
-  }));
-  const orgColors = ORGS.map((o) => ORG_COLORS[o.key]);
+  mapEl.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (!scopeMode) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const rect = mapEl.getBoundingClientRect();
+      const x0 = e.clientX - rect.left;
+      const y0 = e.clientY - rect.top;
+      const [lon, lat] = map.unproject(x0, y0);
+      scopeDraft = { lat, lon, radiusKm: 0 };
+      recomputeInference();
+
+      const move = (ev) => {
+        const x = ev.clientX - rect.left;
+        const y = ev.clientY - rect.top;
+        const [lon2, lat2] = map.unproject(x, y);
+        scopeDraft.radiusKm = haversineKm(lat, lon, lat2, lon2);
+        scopeRadiusEl.value = Math.round(scopeDraft.radiusKm);
+        recomputeInference();
+      };
+      const up = () => {
+        removeEventListener("pointermove", move, true);
+        removeEventListener("pointerup", up, true);
+        if (scopeDraft && scopeDraft.radiusKm > 1) scope = scopeDraft;
+        scopeDraft = null;
+        scopeMode = false;
+        scopeBtnEl.classList.remove("on");
+        mapEl.classList.remove("scope-armed");
+        recomputeInference();
+      };
+      addEventListener("pointermove", move, true);
+      addEventListener("pointerup", up, true);
+    },
+    true // capture — deck.gl 컨트롤러보다 먼저 받는다
+  );
+
+  scopeRadiusEl.value = scope.radiusKm;
+  scopeRadiusEl.onchange = () => {
+    const v = Number(scopeRadiusEl.value);
+    if (Number.isFinite(v) && v > 0) {
+      scope = { ...scope, radiusKm: v };
+      recomputeInference();
+    }
+  };
+
+  // ── 시간창 컨트롤 (SPEC_M3 §6.1) ─────────────────────────────────────
+  const windowControl = createWindowControl(wac, {
+    onChange: ({ windowStart: s, windowEnd: e }) => setWindow(s, e),
+  });
+  winStartEl.onchange = () => setWindow(Number(winStartEl.value), windowEnd);
+  winEndEl.onchange = () => setWindow(windowStart, Number(winEndEl.value));
 
   // ── 조직 카드 (#cells) ───────────────────────────────────────────────
   // 프로토타입 §404-412의 마크업을 그대로 포팅. data-ev/data-rad/data-dir을 이후 chrome()에서 갱신.
@@ -175,77 +332,90 @@ function runApp({ events, periods, byDay, days, maxPerDay, landGeo, coastGeo }) 
   }
 
   // ── 크롬(chrome) 갱신: 상태바, 조직 카드, 활동 피드. 프로토타입 chrome()의 포팅. ──────────
+  // M3-T3부터: "오늘까지 누적"이 아니라 "지금 시간창 안"을 기준으로 카드/피드를 채운다(§6.1/§6.2) —
+  // 스트리밍 소스는 전체 누적치를 free로 주지 않는다는 게 타임라인을 없앤 전제다.
   function chrome() {
+    const day = windowEnd; // "지금"은 시간창의 오른쪽 끝으로 정의한다(재생은 이 끝을 밀어낸다).
     dtgEl.textContent = dtgString(day);
-    sEvEl.textContent = pad(ai, 4);
+    sEvEl.textContent = pad(visibleEvents.length, 4);
+
+    const cnt = Object.fromEntries(ORGS.map((o) => [o.key, 0]));
+    visibleEvents.forEach((e) => { cnt[e.org] = (cnt[e.org] || 0) + 1; });
 
     ORGS.forEach((org, i) => {
-      const p = tlPeriods.find((q) => q.o === i && day >= q.a && day < q.b);
-      const directiveKey = p ? p.d : "CONSOLIDATE"; // 활성 기간이 없을 때의 폴백. map.js DEFAULT_DIRECTIVE와 동일 규칙.
+      const p = periods.find((q) => q.org === org.key && day >= q.startDay && day < q.endDay);
+      const directiveKey = p ? p.directive : "CONSOLIDATE"; // 활성 기간이 없을 때의 폴백. map.js DEFAULT_DIRECTIVE와 동일 규칙.
       const dirDef = DIRECTIVES[directiveKey];
       const el = cellEls[i];
       el.querySelector("[data-ev]").textContent = pad(cnt[org.key], 3);
       el.querySelector("[data-rad]").textContent = pad(Math.round(org.baseRadius * dirDef.radiusMult), 3);
       const dd = el.querySelector("[data-dir]");
       dd.hidden = !reveal;
-      if (reveal && p) dd.textContent = p.d + " · " + pad(p.b - day, 3) + "D LEFT";
+      if (reveal && p) dd.textContent = p.directive + " · " + pad(p.endDay - day, 3) + "D LEFT";
     });
 
-    // 피드: ai가 전진한 만큼(lastFed..ai) 새 이벤트를 맨 위에 추가하고 11개를 넘으면 맨 아래를 지운다.
-    while (lastFed < ai) {
-      const e = events[lastFed];
-      lastFed++;
-      if (feedEl.children.length > 11) feedEl.lastChild.remove();
-      const row = document.createElement("div");
-      row.innerHTML =
-        '<em style="color:' + ORG_COLORS[e.org] + '">' + e.org.slice(0, 4) + "</em> " +
-        Math.abs(e.lat).toFixed(1) + (e.lat < 0 ? "S" : "N") + " " +
-        e.lon.toFixed(1) + "E · " + e.method.toUpperCase() + " · " + e.target.slice(0, 5).toUpperCase();
-      feedEl.prepend(row);
-    }
+    // 피드: 시간창 안 이벤트 중 최신 11개(day 내림차순)를 보여준다. 이벤트 수가 수천 개라도
+    // 창 하나에 든 것만 다루므로 매 프레임 다시 만들어도 가볍다(누적 포인터가 더 이상 필요 없다).
+    const recent = visibleEvents.slice().sort((a, b) => b.day - a.day).slice(0, 11);
+    feedEl.innerHTML = recent
+      .map(
+        (e) =>
+          '<div><em style="color:' + ORG_COLORS[e.org] + '">' + e.org.slice(0, 4) + "</em> " +
+          Math.abs(e.lat).toFixed(1) + (e.lat < 0 ? "S" : "N") + " " +
+          e.lon.toFixed(1) + "E · " + e.method.toUpperCase() + " · " + e.target.slice(0, 5).toUpperCase() + "</div>"
+      )
+      .join("");
   }
 
   // ── 재생 루프 ─────────────────────────────────────────────────────────
   // 프로토타입의 acc2 누산기(accumulator)와 동일: speed(1/7/30배속)를 프레임마다 조금씩 쌓다가
-  // 1을 넘을 때 day를 1씩 전진시킨다. requestAnimationFrame 프레임레이트에 무관하게
-  // "하루가 몇 프레임에 한 번 넘어가는지"가 speed에 비례하도록 만드는 장치.
+  // 1을 넘을 때 시간창을 하루씩 밀어낸다. M3-T3부터는 "day를 전진시켜 더 많이 드러내는" 게 아니라
+  // "시간창 자체를 미래로 슬라이드"한다(§6.1) — 창 너비는 항상 그대로 유지된다.
   let acc2 = 0;
   function loop() {
     if (playing) {
       acc2 += speed / 2.2;
-      let newDay = day;
-      while (acc2 >= 1 && newDay < days - 1) {
-        newDay++;
+      let steps = 0;
+      while (acc2 >= 1) {
+        steps++;
         acc2--;
       }
-      if (newDay !== day) setDay(newDay);
-      if (day >= days - 1) setDay(0); // 끝에 도달하면 처음부터 다시(프로토타입 rewind(0))
+      if (steps > 0) {
+        const width = windowEnd - windowStart;
+        let newEnd = windowEnd + steps;
+        let newStart = windowStart + steps;
+        if (newEnd > days - 1) {
+          // 끝에 닿으면 처음으로 되감기(프로토타입 rewind(0)와 같은 정신).
+          newStart = 0;
+          newEnd = Math.min(days - 1, width);
+        }
+        setWindow(newStart, newEnd);
+      }
     }
 
-    map.setFrame({ day, events, orgs: ORGS, periods, reveal, visibleOrgs });
-    timeline.draw({ day, byDay, periods: tlPeriods, days, maxPerDay, reveal, orgColors });
+    const day = windowEnd;
+    map.setFrame({ day, events: visibleEvents, orgs: ORGS, periods, reveal, visibleOrgs, ...inferenceFrame });
+    windowControl.draw({ windowStart, windowEnd, days });
     chrome();
 
     requestAnimationFrame(loop);
   }
 
-  // ── 타임라인 캔버스 리사이즈(DPR 대응) ───────────────────────────────────
-  // timeline.js의 draw()는 "tx가 이미 DPR 스케일 적용을 마쳤다"고 가정한다(모듈 상단 주석).
-  // 이 스케일링과 canvas.width/height(디바이스 픽셀 단위) 설정은 main.js의 책임.
-  function resizeTimeline() {
+  // ── 시간창 캔버스 리사이즈(DPR 대응) ───────────────────────────────────
+  function resizeWindowCanvas() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const r = tlc.getBoundingClientRect();
-    tlc.width = Math.max(200, r.width) * dpr;
-    tlc.height = Math.max(40, r.height) * dpr;
-    tlc.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+    const r = wac.getBoundingClientRect();
+    wac.width = Math.max(200, r.width) * dpr;
+    wac.height = Math.max(28, r.height) * dpr;
+    wac.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  resizeTimeline();
+  resizeWindowCanvas();
   let resizeTimer;
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(resizeTimeline, 100);
+    resizeTimer = setTimeout(resizeWindowCanvas, 100);
   });
-  if (window.ResizeObserver) new ResizeObserver(() => resizeTimeline()).observe(tlc.parentElement);
+  if (window.ResizeObserver) new ResizeObserver(() => resizeWindowCanvas()).observe(wac.parentElement);
 
   // ── 줌 프리셋 / 컨트롤 ────────────────────────────────────────────────
   // 프로토타입은 px/deg 카메라(cam.z)를 썼지만 deck.gl은 zoom level을 쓴다(BUILD_PLAN T4 노트,
@@ -276,7 +446,8 @@ function runApp({ events, periods, byDay, days, maxPerDay, landGeo, coastGeo }) 
     reveal = !reveal;
     e.currentTarget.classList.toggle("on", reveal);
     // map.setFrame에도 reveal을 넘기지만 map.js는 M1에서 이를 사용하지 않는다(모듈 주석 참고) —
-    // 카드/타임라인만 reveal에 반응한다.
+    // 카드/타임라인만 reveal에 반응한다. 결과 패널/추론 레이어는 reveal과 무관하게 정답지를
+    // 절대 보여주지 않는다(정답지 분리 경계, SPEC_M3 §3).
   };
 
   ppEl.onclick = (e) => {
@@ -296,7 +467,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, landGeo, coastGeo }) 
 
   // ── 뷰 라우팅(SIM/ORG/ANL/DAT) ───────────────────────────────────────
   // .wrap[data-view]를 nav 버튼 클릭에 맞춰 바꾸면 style.css의 .wrap:not([data-view="sim"]) 규칙이
-  // stage/side/timeline을 숨기고 해당 .viewpane(#view-anl/#view-org/#view-dat)만 보여준다.
+  // stage/side/시간창을 숨기고 해당 .viewpane(#view-anl/#view-org/#view-dat)만 보여준다.
   // ANL은 처음 진입할 때 한 번만 createAnalysisView().render()를 호출해 runAblation() 결과를 그린다
   // (analysis-view.js 안에서 result를 캐싱하므로 다시 눌러도 재계산하지 않는다).
   const wrapEl = document.querySelector(".wrap");
@@ -321,19 +492,23 @@ function runApp({ events, periods, byDay, days, maxPerDay, landGeo, coastGeo }) 
     ["PRNG SEED " + SEED, "LOCKED"],
     ["AGENT HIERARCHY / 3 CELLS", "READY"],
     ["SIMULATION SPAN / " + days + " DAYS", "BUILT"],
+    ["TARGET INFERENCE / " + facilities.length + " CANDIDATES", "BUILT"],
     ["COMMAND LAYER", "WITHHELD"],
   ];
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // 시간창 기본값(가장 최근 100일)을 실제로 반영 — setWindow가 visibleEvents/입력창/추론을 전부 채운다.
+  setWindow(windowStart, windowEnd);
+
+  // index.html의 정적 마크업은 "재생 중"을 기본값으로 박아뒀지만(과거 M1 동작), M3-T3부터는
+  // playing=false가 기본이므로(위 상태 선언) 버튼/상태 표시를 실제 상태와 맞춰준다.
+  ppEl.textContent = playing ? "PAUSE" : "PLAY";
+  ppEl.classList.toggle("on", playing);
+  sDotEl.classList.toggle("on", playing);
+  sModeEl.textContent = playing ? "RUNNING" : "HOLD";
+
   if (reduceMotion) {
-    // 부트 애니메이션을 건너뛰고, 프로토타입처럼 재생 중간 지점(day 940)에서 정지 상태로 시작한다.
     bootEl.classList.add("done");
-    setDay(940);
-    playing = false;
-    ppEl.textContent = "PLAY";
-    ppEl.classList.remove("on");
-    sDotEl.classList.remove("on");
-    sModeEl.textContent = "HOLD";
   } else {
     BOOT.forEach((line, i) => {
       setTimeout(() => {
@@ -344,7 +519,7 @@ function runApp({ events, periods, byDay, days, maxPerDay, landGeo, coastGeo }) 
         bootEl.appendChild(d);
       }, i * 230);
     });
-    setTimeout(() => bootEl.classList.add("done"), 1900);
+    setTimeout(() => bootEl.classList.add("done"), 2000);
   }
 
   updateScaleReadout();

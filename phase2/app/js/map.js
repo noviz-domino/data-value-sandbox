@@ -56,8 +56,25 @@ function currentBase(org, day) {
  *   이 모듈은 네트워크 요청을 하지 않는다.
  * @returns {{ setFrame: Function, setView: Function, getViewState: Function, destroy: Function }}
  */
-export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
-  const { Deck, MapView, GeoJsonLayer, ScatterplotLayer, PathLayer, TextLayer } = window.deck;
+// 후보 시설 마커용 "속이 빈 정사각형" 아이콘을 1회만 캔버스로 그려 data URL로 캐시해둔다.
+// deck.gl의 IconLayer는 이미지 텍스처가 필요한데, 흰색으로 그려두면 getColor로 원하는 색으로
+// 틴트(tint)할 수 있다 — SPEC_M3 §7 "이벤트는 점, 시설은 속 빈 정사각형" 요건.
+let squareIconCache = null;
+function squareIconUrl() {
+  if (squareIconCache) return squareIconCache;
+  const c = document.createElement("canvas");
+  c.width = 32;
+  c.height = 32;
+  const ctx = c.getContext("2d");
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3.5;
+  ctx.strokeRect(5, 5, 22, 22);
+  squareIconCache = c.toDataURL();
+  return squareIconCache;
+}
+
+export function createMap(container, { onHover, onFacilityClick, landGeo, coastGeo } = {}) {
+  const { Deck, MapView, GeoJsonLayer, ScatterplotLayer, PathLayer, TextLayer, IconLayer } = window.deck;
 
   // viewState를 직접 소유한다(controlled component 패턴). Deck에 항상 이 값을 넘기고,
   // 사용자가 드래그/휠로 바꾸면 onViewStateChange에서 갱신해 다시 넘긴다.
@@ -83,6 +100,13 @@ export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
     onHover: (info) => {
       if (onHover) onHover(info);
     },
+    // 후보 시설 마커(candidate-facilities 레이어, pickable:true)를 클릭하면 결과 패널에서 고르는 것과
+    // 같은 선택 동작을 지도에서도 할 수 있게 한다(§6.4 "선택하면 지도에서 강조"의 역방향 진입점).
+    onClick: (info) => {
+      if (onFacilityClick && info && info.layer && info.layer.id === "candidate-facilities" && info.object) {
+        onFacilityClick(info.object.id);
+      }
+    },
     getCursor: () => "crosshair",
   });
 
@@ -93,7 +117,16 @@ export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
    */
   function setFrame(frame) {
     lastFrame = frame;
-    const { day, events, orgs, periods, visibleOrgs } = frame;
+    const {
+      day, events, orgs, periods, visibleOrgs,
+      // ── M3-T3: 표적 추론(target inference) 스코프 선택 관련 필드. 모두 optional —
+      // 넘기지 않으면(SIM 재생만 할 때) 이 레이어들은 그냥 생략된다.
+      scope, // 확정된 스코프 {lat, lon, radiusKm} | null
+      scopeDraft, // 드래그 중인 실시간 미리보기 {lat, lon, radiusKm} | null
+      candidateFacilities, // 스코프 안 후보 시설 배열(facilities.json 원소) | undefined
+      selectedFacilityId, // 결과 패널에서 선택된 시설 id | null
+      supportingEvents, // 선택된 후보를 뒷받침하는 "in-band" 이벤트(좌표만, org 없음) | undefined
+    } = frame;
     // reveal은 M1에서 지도 레이어에 영향을 주지 않는다 — 진짜 답 공개 시각화는 타임라인/카드가 맡는다.
     // 시그니처만 유지해두고(향후 마일스톤 대비), 여기서는 아무 동작도 하지 않는다.
 
@@ -129,7 +162,9 @@ export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
       );
     }
 
-    // 이후 이벤트/조직 레이어에서 반복 필터링하지 않도록 보이는 조직의 이벤트만 한 번 걸러둔다.
+    // M3-T3부터 events는 이미 main.js의 query.js(queryEvents)가 시간창(window)으로 걸러서 넘긴다 —
+    // 이 레이어는 그 안에서 "보이는 조직인가"만 한 번 더 거른다. e.day <= day는 방어적으로 남겨둔다
+    // (day는 main.js가 windowEnd로 넘기므로 windowed events는 이미 이 조건을 만족한다).
     const visibleEvents = (events || []).filter((e) => e.day <= day && isVisible(e.org));
 
     // ── 2. 누적 이벤트 — 2px 남짓, 조직색, 낮은 불투명도(0.35) ──────────────────
@@ -257,7 +292,92 @@ export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
       );
     }
 
+    // ── 8. 스코프 원(circle) — 확정본과 드래그 중 미리보기. 둘 다 조직색이 아니라 리드 악센트
+    // (nw/cyan)만 쓴다: 이건 "어느 조직인가"가 아니라 "지금 어디를 조사 중인가"를 나타내는
+    // 별개의 데이터 인코딩이라서다.
+    const drawScope = scopeDraft || scope;
+    if (drawScope && drawScope.radiusKm > 0) {
+      layers.push(
+        new ScatterplotLayer({
+          id: "scope-circle",
+          data: [drawScope],
+          getPosition: (d) => [d.lon, d.lat],
+          radiusUnits: "meters",
+          getRadius: (d) => d.radiusKm * 1000,
+          stroked: true,
+          filled: !!scopeDraft, // 드래그 중에는 옅게 채워서 "지금 편집 중"임을 알려준다
+          getFillColor: [...RGB.nw, 22],
+          getLineColor: [...RGB.nw, scopeDraft ? 230 : 170],
+          lineWidthUnits: "pixels",
+          getLineWidth: scopeDraft ? 2 : 1.5,
+          pickable: false,
+        }),
+        new ScatterplotLayer({
+          id: "scope-center",
+          data: [drawScope],
+          getPosition: (d) => [d.lon, d.lat],
+          radiusUnits: "pixels",
+          getRadius: 3,
+          getFillColor: [...RGB.nw, 255],
+          pickable: false,
+        })
+      );
+    }
+
+    // ── 9. 후보 시설 마커 — 이벤트(점)와 구분되는 "속 빈 정사각형"(SPEC §7). 선택된 것만 강조.
+    if (candidateFacilities && candidateFacilities.length) {
+      layers.push(
+        new IconLayer({
+          id: "candidate-facilities",
+          data: candidateFacilities,
+          getPosition: (d) => [d.lon, d.lat],
+          getIcon: () => ({ url: squareIconUrl(), width: 32, height: 32, anchorX: 16, anchorY: 16 }),
+          sizeUnits: "pixels",
+          getSize: (d) => (d.id === selectedFacilityId ? 22 : 14),
+          getColor: (d) => (d.id === selectedFacilityId ? [...RGB.nw, 255] : [...RGB.hairLit, 220]),
+          pickable: true,
+        })
+      );
+    }
+
+    // ── 10. 선택된 후보를 뒷받침하는 in-band 이벤트 강조 — org색이 아니라 중립 악센트 링만.
+    // 정답지 분리: supportingEvents는 이미 projectForInference()를 거친 좌표 전용 이벤트라
+    // org 필드 자체가 없다(이 레이어 코드도 org를 참조하지 않는다).
+    if (supportingEvents && supportingEvents.length) {
+      layers.push(
+        new ScatterplotLayer({
+          id: "supporting-events",
+          data: supportingEvents,
+          getPosition: (d) => [d.lon, d.lat],
+          radiusUnits: "pixels",
+          getRadius: 4.5,
+          stroked: true,
+          filled: false,
+          getLineColor: [...RGB.nw, 235],
+          lineWidthUnits: "pixels",
+          getLineWidth: 1.6,
+          pickable: false,
+        })
+      );
+    }
+
     deckInstance.setProps({ layers });
+  }
+
+  /**
+   * 화면 픽셀 좌표(container 기준)를 지도 좌표 [lon, lat]로 되돌린다. 스코프 드래그 선택(§6.3)이
+   * "클릭한 화면 지점이 지리적으로 어디인가"를 알아야 해서 필요하다. deck.gl의 WebMercatorViewport를
+   * 현재 viewState + 컨테이너 크기로 직접 만들어 unproject한다(피킹이 아니라 좌표 변환이라 별도 API).
+   * @param {number} x - container 기준 px
+   * @param {number} y - container 기준 px
+   * @returns {[number, number]} [lon, lat]
+   */
+  function unproject(x, y) {
+    const { WebMercatorViewport } = window.deck;
+    const width = container.clientWidth || 1;
+    const height = container.clientHeight || 1;
+    const vp = new WebMercatorViewport({ ...viewState, width, height });
+    return vp.unproject([x, y]);
   }
 
   /** 카메라를 부분적으로 갱신한다 (예: 줌 프리셋 버튼). 전달하지 않은 필드는 현재 값을 유지. */
@@ -285,5 +405,5 @@ export function createMap(container, { onHover, landGeo, coastGeo } = {}) {
     lastFrame = null;
   }
 
-  return { setFrame, setView, getViewState, destroy };
+  return { setFrame, setView, getViewState, destroy, unproject };
 }

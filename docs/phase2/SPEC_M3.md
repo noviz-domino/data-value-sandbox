@@ -29,7 +29,9 @@ Convergence is the strongest signal and is invisible without dates. The expected
 
 ## 2. Candidate facilities
 
-Already built: `phase2/app/data/facilities.json` (160 facilities, 10.6 KB). Do not regenerate it.
+Already built: `phase2/app/data/facilities.json` (**69** facilities). Do not regenerate it.
+
+It began as 160, then was restricted to the 69 that the generator's own terrain model (`ne_110m_land`) also resolves as land. Mixing resolutions was rejected: background events placed against the coarse model never land on small islands, so campaign events placed against a finer one would have made "event on a small island" imply "campaign event" and inflate every score.
 
 ```json
 {
@@ -41,7 +43,7 @@ Already built: `phase2/app/data/facilities.json` (160 facilities, 10.6 KB). Do n
 - `kind` ∈ `power_plant` (102) | `port` (25) | `airport` (33)
 - `id` is synthetic (`PWR-001`, `PRT-001`, `AIR-001`). **Real facility names are deliberately withheld and must never be added.** Locations are real so that placement is realistic; names are omitted so a screenshot cannot read as a target list for real infrastructure.
 
-A random guess among 160 candidates is **0.63% (top-1)** and **3.1% (top-5)**. Those are the floors.
+A global floor over all 69 candidates would be 1.45%, but **do not use it** — scoring is always done inside a scope holding far fewer candidates. See §5.3: the honest floor is scope-relative (~13.5%).
 
 ## 3. Ground truth separation — non-negotiable
 
@@ -306,7 +308,7 @@ Today it filters an in-memory array. Later it becomes a database call. Views mus
 ### 6.3 Scope selection
 
 - Click a point on the map, then drag outward to set a radius (live circle preview).
-- A numeric radius input as the precise alternative. Default **60 km**.
+- A numeric radius input as the precise alternative. Default **160 km**, matching the evaluation operating point in §5.3.
 - Show the scoped event count live, with the §5.2 warnings.
 
 ### 6.4 Results panel
