@@ -70,6 +70,9 @@
 .org-sig-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .org-sig-name{font-family:var(--f-cond);font-weight:600;letter-spacing:.04em;color:var(--ink);font-size:12px}
 .org-sig-readout{font-family:var(--f-mono);color:var(--nw);font-size:12px}
+/* Fix1: 배경 활동 수준 슬라이더 전용 한 줄 설명 — 이름만으로는 "이 슬라이더가 정확히 무엇을
+   스케일링하는지"가 안 드러나므로 슬라이더 바로 위에 붙인다. */
+.org-sig-desc{color:var(--ink-mute);font-size:11px;margin-bottom:6px}
 .org-sig-row input[type="range"]{width:100%;accent-color:var(--nw)}
 
 .org-sweep-row{margin-top:8px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
@@ -79,6 +82,9 @@
 .org-sweep-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .org-sweep-note{color:var(--ink-mute);font-size:10px}
 .org-sweep-singleseed{color:var(--tb);font-weight:600}
+/* Fix1: M2를 왜 뺐는지 설명하는 줄 — 눈에 덜 띄는 잡음이 아니라 "읽는 방법"이라 싱글시드 경고와
+   비슷한 무게로 강조한다. */
+.org-sweep-omit{color:var(--ds);font-weight:600}
 
 @media (max-width:900px){
   .org-card-body{grid-template-columns:1fr}

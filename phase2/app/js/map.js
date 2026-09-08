@@ -95,7 +95,7 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
   const derivedCache = {
     visibleEvents: { eventsRef: null, day: null, orgsKey: null, data: [] },
     recentEvents: { visibleEventsRef: null, day: null, data: [] },
-    orgFrames: { orgsRef: null, periodsRef: null, day: null, orgsKey: null, data: [] },
+    orgFrames: { orgsRef: null, periodsRef: null, day: null, orgsKey: null, directivesRef: null, data: [] },
   };
   // visibleOrgs는 main.js에서 매번 새 Set을 만들지 않고 같은 Set 인스턴스를 add/delete로 계속
   // 고쳐 쓰므로, 참조(reference)만 비교하면 내용이 바뀌어도 "안 바뀜"으로 오판한다. 정렬된
@@ -138,6 +138,10 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
     lastFrame = frame;
     const {
       day, events, orgs, periods, visibleOrgs,
+      // M4 Fix2: org-view §12.1 신호 강도로 재실행(rerun)됐을 때, 반경 링 계산도 그 오버라이드를
+      // 반영해야 한다. 안 넘기면(SIM 기본 재생) 기존처럼 정적 import(DIRECTIVES)를 그대로 쓴다 —
+      // 이 필드는 optional이라 이전 호출부(있다면)와 호환된다.
+      directives, // organizations.js의 DIRECTIVES와 같은 모양 | undefined
       // ── M3-T3: 표적 추론(target inference) 스코프 선택 관련 필드. 모두 optional —
       // 넘기지 않으면(SIM 재생만 할 때) 이 레이어들은 그냥 생략된다.
       scope, // 확정된 스코프 {lat, lon, radiusKm} | null
@@ -146,6 +150,7 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
       selectedFacilityId, // 결과 패널에서 선택된 시설 id | null
       supportingEvents, // 선택된 후보를 뒷받침하는 "in-band" 이벤트(좌표만, org 없음) | undefined
     } = frame;
+    const effectiveDirectives = directives || DIRECTIVES;
     // M4-T2 (SPEC_M4 §2 항목1): reveal이 이 지도가 그리는 "정답지 레이어"를 실제로 가른다.
     // org 기본 위치 마커·콜사인 라벨·작전 반경 링·TIDEBREAK 궤적, 그리고 사건 점의 "조직별 색"은
     // 전부 지휘 계층(command layer) 정보다 — reveal이 꺼지면 지도 어디에도 나타나지 않는다.
@@ -262,7 +267,7 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
     // 조직 집합이 그대로면 재사용 — 일시정지 중에는 매 프레임 똑같은 배열을 그대로 돌려준다.
     const oc = derivedCache.orgFrames;
     let orgFrames;
-    if (oc.orgsRef === orgs && oc.periodsRef === periods && oc.day === day && oc.orgsKey === orgsKey) {
+    if (oc.orgsRef === orgs && oc.periodsRef === periods && oc.day === day && oc.orgsKey === orgsKey && oc.directivesRef === effectiveDirectives) {
       orgFrames = oc.data;
     } else {
       orgFrames = (orgs || [])
@@ -270,13 +275,14 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
         .map((org) => {
           const [la, lo] = currentBase(org, day);
           const directiveKey = activeDirectiveFor(org, periods || [], day);
-          const radiusKm = org.baseRadius * DIRECTIVES[directiveKey].radiusMult;
+          const radiusKm = org.baseRadius * effectiveDirectives[directiveKey].radiusMult;
           return { org, lat: la, lon: lo, directiveKey, radiusKm };
         });
       oc.orgsRef = orgs;
       oc.periodsRef = periods;
       oc.day = day;
       oc.orgsKey = orgsKey;
+      oc.directivesRef = effectiveDirectives;
       oc.data = orgFrames;
     }
 

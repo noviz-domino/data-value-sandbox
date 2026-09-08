@@ -25,7 +25,8 @@
 //     queryEvents: (args: { scope?: {lat,lon,radiusKm}, window?: {startDay,endDay} }) => object[],
 //     getState: () => ({ window: { startDay: number, endDay: number }, scope: {lat,lon,radiusKm} | null }),
 //     onStateChange: (cb: (state: ReturnType<getState>) => void) => (() => void),
-//     requestRerun: (opts?: { seed?: number }) => void,
+//     requestRerun: (overrides?: {orgs:object[], directives:object, noiseMultiplier:number} | null)
+//       => Promise<{events,periods,campaigns,facilities,days,timingMs}|null>,
 //   }
 //
 // 투어는 화면 요소를 가리키기만 할 뿐 ground truth를 새로 읽지 않는다 — deps는 인자로 받지만

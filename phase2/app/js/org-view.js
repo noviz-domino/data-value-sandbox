@@ -10,23 +10,26 @@
 //     queryEvents: (args) => object[],
 //     getState: () => ({ window: {startDay,endDay}, scope: {lat,lon,radiusKm}|null }),
 //     onStateChange: (cb) => (() => void),
-//     requestRerun: (opts?: { seed?: number }) => void,
+//     requestRerun: (overrides?: {orgs:object[], directives:object, noiseMultiplier:number} | null)
+//       => Promise<{events,periods,campaigns,facilities,days,timingMs}|null>,
 //   }
 //
-// ── 이 뷰가 실제로 시뮬레이션을 다시 돌리는 방법에 대한 메모 (스캐폴드 주석이 예고했던 확장) ──
-// main.js의 viewDeps.requestRerun은 seed만 받는 얇은 스텁이라(§3.1/§3.2가 요구하는) organizations.js
-// §7 파라미터 오버라이드를 전달할 통로가 없다 — main.js의 simulateFn 클로저 자체가 overrides를
-// 받지 않기 때문이다. main.js는 다른 에이전트 소관이라 그 클로저를 넓힐 수 없다. 그래서 이 뷰는
-// "미리보기/sweep 전용"으로 스스로 simulate()/runAblation()/evaluateInference()를 불러 완전히
-// 독립적으로 재계산한다 — 지도/타임라인 등 앱의 나머지 부분은 여전히 기본 설정으로 남아있고,
-// 이 뷰 안의 결과 패널·sweep 차트만 오버라이드를 반영한다. deps.requestRerun({seed})은 그래도
-// "재실행 의도"를 신호로 보내는 용도로 한 번 불러준다(계약을 지키는 예의상의 호출 — main.js가
-// 나중에 이 opts를 실제로 넓혀 쓰게 되면 자동으로 이어받는다).
+// ── "적용(apply)"이 실제로 앱 전체를 재실행하는 방법 (M4 Fix2로 스텁을 진짜로 바꿈) ──────────
+// main.js의 viewDeps.requestRerun은 더 이상 seed만 받는 스텁이 아니다 — overrides({orgs,
+// directives, noiseMultiplier}, buildOverrides()가 만드는 것과 정확히 같은 모양)를 받아
+// main.js 안에서 진짜 simulate()를 다시 돌리고, 그 결과로 지도·피드·시간창·ANL 뷰·결과 패널까지
+// 앱 상태 전체를 갈아 끼운다. 그래서 이 뷰의 "실행" 버튼(runNow)은 더 이상 스스로 simulate()를
+// 부르지 않는다 — deps.requestRerun(overrides)이 돌려주는 Promise가 실제로 적용된 run을 그대로
+// 주므로, 이 뷰는 그 run 위에 scoreRun()(runAblation/evaluateInference로 채점만, 재시뮬레이션
+// 없음)만 얹어 자기 미리보기 패널 숫자를 만든다. "private pipeline"은 이제 sweep(§3.3)에만
+// 남아 있다 — sweep은 6번의 전체 사이클을 앱 상태에 적용하지 않고 그래프만 그리는 분석용
+// 액션이라, 여전히 이 뷰가 자기 landTest로 simulate()를 직접 여러 번 돈다.
 //
 // simulate()가 필요로 하는 landTest(§5 지리 엔진)는 deps에 없으므로, main.js와 동일한 파일
 // (data/ne_110m_land.geojson)을 이 뷰가 직접 fetch해 만든다 — index.html 기준 상대경로라
 // main.js의 fetch("data/...")와 같은 방식으로 해석된다. facilities는 deps.result.facilities
-// (simulate()가 이미 만들어준 배열)를 그대로 재사용해 중복 fetch를 피한다.
+// (simulate()가 이미 만들어준 배열)를 그대로 재사용해 중복 fetch를 피한다. sweep은 이 landTest로
+// 직접 simulate()를 돌리므로 여전히 필요하다 — "실행/적용" 버튼만 deps.requestRerun으로 옮겨갔다.
 //
 // 정답지 분리(ground truth separation, SPEC_M3 §3): 이 파일이 부르는 것은 simulate()/runAblation()/
 // evaluateInference() 세 "엔진"뿐이다. inference.js/analysis.js의 채점 로직을 재구현하지 않는다.
@@ -56,10 +59,10 @@ register({
     "org.title": "조직 구성",
     "org.subtitle": "§7 파라미터를 직접 편집한다. 편집하면 지금 화면(시뮬레이션·지도)이 이 설정을 아직 반영하지 못한 상태가 된다.",
     "org.staleBanner": "재실행 필요 — 이 카드의 값은 지금 표시된 결과를 만든 설정과 다르다.",
-    "org.resetBtn": "기본값으로 되돌리기",
-    "org.runBtn": "이 설정으로 미리보기 실행",
-    "org.runBtnBusy": "실행 중…",
-    "org.runNote": "지도·타임라인 등 앱의 나머지 화면은 그대로 기본 설정으로 남는다 — 이 패널 안의 숫자만 지금 설정을 반영한다.",
+    "org.resetBtn": "기본값으로 되돌리고 재실행",
+    "org.runBtn": "이 설정 적용 — 앱 전체 재실행",
+    "org.runBtnBusy": "적용 중…",
+    "org.runNote": "이 버튼을 눌러야 실제로 적용된다 — 그 전까지는 이 카드의 숫자만 바뀌고, 지도·활동 피드·시간창·분석(ANL) 뷰·결과 패널은 마지막으로 적용된 설정 그대로다. 적용하면 그 전 Analyze/Scan 결과는 무효화된다.",
     "org.base": "거점 좌표(위도, 경도)",
     "org.radius": "기본 반경(km)",
     "org.tempo": "기본 템포(하루당 확률)",
@@ -81,7 +84,13 @@ register({
     "org.sig.drystoneSeasonality": "DRYSTONE 계절성",
     "org.sig.drystoneTargetPref": "DRYSTONE 표적 선호",
     "org.sig.directiveEffect": "지침(directive) 효과 크기",
-    "org.sig.noiseRatio": "잡음비(noise ratio)",
+    // Fix1(architect's spec error): 이 슬라이더는 "잡음비"가 아니라 배경(background) 사건의
+    // 템포를 조절한다 — noiseTempoMultiplierForStrength()가 실제로 곱하는 것도 baseTempo다.
+    // 이 슬라이더를 올리면 배경 이벤트 수가 늘어 M2(KNN)의 학습 데이터가 함께 커진다는 게
+    // sweep에서 M2/M3 두 곡선이 반대로 움직이는 이유 — "잡음이 늘면 분류가 쉬워진다"로 잘못
+    // 읽히기 쉬운 이름을 버린다.
+    "org.sig.noiseRatio": "배경 활동 수준",
+    "org.sig.backgroundActivityDesc": "배경(background) 사건의 템포를 조절한다 — 0 = 배경 없음, 1.0 = 기본(커밋된 데이터셋과 같은 80/20 분할), 2.0 = 배경 과다.",
     "org.sweepBtn": "이 신호 sweep",
     "org.sweepBtnBusy": "sweep 중… ({done}/{total})",
     "org.sweepCached": "(캐시됨)",
@@ -90,6 +99,9 @@ register({
     "org.sweepLegendM2": "M2 회복 비율 (run C)",
     "org.sweepLegendM3": "M3 top-1 (PEC)",
     "org.sweepFloorCeiling": "점선: M2 기준선 0%/100%, M3 스코프별 기준선",
+    "org.sweepFloorOnlyM3": "점선: M3 스코프별 기준선",
+    // Fix1: 배경 활동 수준 sweep에서는 M2를 아예 빼고 M3 한 곡선만 그린다 — 이유를 차트 아래에 명시.
+    "org.sweepBackgroundOmitNote": "M2(조직 분류) 곡선은 이 신호에서 뺐다 — 배경 템포를 올리면 KNN의 학습 데이터도 함께 늘어나, 이 곡선은 잡음 내성이 아니라 표본 크기를 측정하게 되기 때문이다.",
     "org.runResultTitle": "미리보기 결과",
     "org.runResultM2": "M2 (run C) — 정확도 {acc}% (기준선 {floor}% · 상한 {ceil}%) · 회복 비율 {rec}%",
     "org.runResultM3": "M3 (PEC, 단일 시드) — top-1 {top1}% (스코프별 기준선 {floor}%)",
@@ -106,10 +118,10 @@ register({
     "org.title": "Organisation configuration",
     "org.subtitle": "Edit the §7 parameters directly. Editing means the currently displayed simulation and map no longer match this configuration.",
     "org.staleBanner": "Re-run required — this card's values differ from the configuration behind what's currently shown.",
-    "org.resetBtn": "Reset to defaults",
-    "org.runBtn": "Run preview with this configuration",
-    "org.runBtnBusy": "Running…",
-    "org.runNote": "The rest of the app (map, timeline) stays on the default configuration — only the numbers in this panel reflect what you've set here.",
+    "org.resetBtn": "Reset to defaults and re-run",
+    "org.runBtn": "Apply this configuration — re-run the whole app",
+    "org.runBtnBusy": "Applying…",
+    "org.runNote": "Nothing else updates until you press this — until then, only this card's numbers reflect what you've set here, while the map, activity feed, time window, analysis (ANL) view and results panel stay on the last applied configuration. Applying invalidates any previous Analyze/Scan result.",
     "org.base": "Base coordinates (lat, lon)",
     "org.radius": "Base radius (km)",
     "org.tempo": "Base tempo (probability per day)",
@@ -131,7 +143,8 @@ register({
     "org.sig.drystoneSeasonality": "DRYSTONE seasonality",
     "org.sig.drystoneTargetPref": "DRYSTONE target preference",
     "org.sig.directiveEffect": "Directive effect size",
-    "org.sig.noiseRatio": "Noise ratio",
+    "org.sig.noiseRatio": "Background activity level",
+    "org.sig.backgroundActivityDesc": "Scales background event tempo — 0 = no background, 1.0 = the default (matches the committed 80/20 split), 2.0 = heavy background.",
     "org.sweepBtn": "Sweep this signal",
     "org.sweepBtnBusy": "Sweeping… ({done}/{total})",
     "org.sweepCached": "(cached)",
@@ -140,6 +153,8 @@ register({
     "org.sweepLegendM2": "M2 recovered fraction (run C)",
     "org.sweepLegendM3": "M3 top-1 (PEC)",
     "org.sweepFloorCeiling": "dashed: M2 floor/ceiling at 0%/100%, M3 scope-relative floor",
+    "org.sweepFloorOnlyM3": "dashed: M3 scope-relative floor",
+    "org.sweepBackgroundOmitNote": "M2 (org classification) is omitted for this signal — raising background tempo also enlarges KNN's training set, so its curve would measure sample size rather than noise tolerance.",
     "org.runResultTitle": "Preview result",
     "org.runResultM2": "M2 (run C) — accuracy {acc}% (floor {floor}% · ceiling {ceil}%) · recovered {rec}%",
     "org.runResultM3": "M3 (PEC, single seed) — top-1 {top1}% (scope-relative floor {floor}%)",
@@ -319,39 +334,50 @@ export function createOrgView(container, deps) {
     };
   }
 
+  /** 지금 drafts/signals가 기본값과 완전히 같으면 null(=simulate()의 "오버라이드 없음" 경로),
+   * 아니면 buildOverrides(null)이 만드는 실제 오버라이드 객체. requestRerun에 null을 넘기면
+   * main.js가 boot() 때와 완전히 같은 경로로 simulate()를 부른다 — Reset이 진짜 "기본으로"임을
+   * 보장하는 지점. */
+  function overridesForApply() {
+    return snapshotOf(drafts, signals) === DEFAULT_SNAPSHOT ? null : buildOverrides(null);
+  }
+
+  /**
+   * "적용" — M4 Fix2로 진짜가 된 재실행. 더 이상 이 뷰가 스스로 simulate()를 돌리지 않는다:
+   * deps.requestRerun(overrides)이 main.js 안에서 실제로 simulate()를 다시 돌리고 지도·피드·
+   * 시간창·ANL 뷰·결과 패널까지 앱 전체를 갈아 끼운 뒤, 그렇게 만든 run을 그대로 돌려준다.
+   * 이 뷰는 그 run 위에 scoreRun()(runAblation/evaluateInference로 "채점"만, 재시뮬레이션 없음)만
+   * 얹어 이 패널의 미리보기 숫자를 만든다 — main.js와 이 뷰가 서로 다른 run을 보는 일이 없다.
+   */
   async function runNow() {
     if (running) return;
     running = true;
     runError = null;
     render();
     try {
-      const [landTest] = await Promise.all([ensureLandTest()]);
-      const overrides = buildOverrides(null);
-      const t0 = performance.now();
-      const run = simulate({ seed: deps.seed, landTest, facilities: facilitiesRaw(), withCampaigns: true, overrides });
+      const overrides = overridesForApply();
+      const run = await deps.requestRerun(overrides);
+      if (!run) throw new Error("requestRerun이 결과를 돌려주지 않았다(다른 재실행이 이미 진행 중이었을 수 있다)");
       const scored = scoreRun(run, deps.seed);
-      const t1 = performance.now();
-      runResult = { ...scored, timingMs: t1 - t0 };
+      runResult = { ...scored, timingMs: run.timingMs };
       lastRunSnapshot = snapshotOf(drafts, signals);
-      // 계약상의 예의 호출 — 지금 main.js의 스텁은 overrides를 못 받지만, 재실행 의도는 신호로 남긴다.
-      try {
-        deps.requestRerun({ seed: deps.seed });
-      } catch {
-        /* 스텁이 던져도 미리보기 자체는 이미 끝났으니 무시한다 */
-      }
     } catch (err) {
       runError = (err && err.message) || String(err);
-      console.error("[org-view] 미리보기 실행 실패", err);
+      console.error("[org-view] 적용 실패", err);
     } finally {
       running = false;
       render();
     }
   }
 
-  function resetToDefaults() {
+  /** 기본값으로 편집 상태를 되돌리고, 그 기본값을 실제로 앱 전체에 재적용한다(§Fix2 "Reset to
+   * defaults must restore the committed configuration and re-run back to it"). */
+  async function resetToDefaults() {
+    if (running) return;
     drafts = cloneDefaultOrgs();
     signals = { directiveEffect: 1.0, noiseRatio: 1.0 };
     render();
+    await runNow(); // overridesForApply()가 이제 정확히 DEFAULT_SNAPSHOT과 같으므로 null을 넘긴다.
   }
 
   // ── sweep ────────────────────────────────────────────────────────────────
@@ -627,10 +653,14 @@ export function createOrgView(container, deps) {
 
   function sliderRowHtml(def) {
     const strength = currentStrength(def.name);
+    // Fix1: "잡음비(noise ratio)"였던 이 슬라이더를 "배경 활동 수준"으로 다시 이름 붙였다 —
+    // 실제로 하는 일(배경 사건 템포 배율)과 이름을 맞추고, 한 줄 설명을 슬라이더 바로 아래 둔다.
+    const desc = def.name === "noiseRatio" ? '<div class="org-sig-desc">' + t("org.sig.backgroundActivityDesc") + "</div>" : "";
     return (
       '<div class="org-sig-row">' +
         '<div class="org-sig-head"><span class="org-sig-name">' + t("org.sig." + def.name) + '</span>' +
           '<span class="org-sig-readout" id="readout-' + def.name + '">' + esc(signalReadout(def.name, strength)) + "</span></div>" +
+        desc +
         '<input type="range" min="0" max="2" step="0.05" value="' + strength + '" data-slider="' + def.name + '" id="slider-' + def.name + '"/>' +
         sweepRowHtml(def.name) +
       "</div>"
@@ -652,6 +682,12 @@ export function createOrgView(container, deps) {
   function renderSweepChart(state) {
     const W = 460, H = 200, PAD = 34;
     const points = state.points;
+    // Fix1(architect's spec error, SPEC_M4 §3.3): 배경 활동 수준(구 "잡음비") 슬라이더에서는
+    // M2·M3가 서로 다른 방향으로 움직인다 — 이 슬라이더가 배경 사건 "템포"를 스케일링하므로,
+    // 올릴수록 M3(표적 추론)에는 방해 신호가 늘지만 M2(KNN 조직 분류)는 같은 비율로 학습 데이터가
+    // 늘어나 오히려 유리해진다. 두 곡선을 한 축에 나란히 그리면 "잡음이 늘면 분류가 쉬워진다"는
+    // 잘못된 결론으로 읽힌다 — 그래서 이 신호에서만 M3 한 곡선만 그리고, M2를 뺀 이유를 아래에 적는다.
+    const onlyM3 = state.signal === "noiseRatio";
     const x = (s) => PAD + (s / 2) * (W - PAD * 2);
     const y = (v) => H - PAD - clamp01(v) * (H - PAD * 2);
     const m2Path = points.map((p, i) => (i === 0 ? "M" : "L") + x(p.strength).toFixed(1) + " " + y(p.m2Recovered).toFixed(1)).join(" ");
@@ -669,20 +705,24 @@ export function createOrgView(container, deps) {
       '<div class="org-sweep-chart">' +
         '<svg viewBox="0 0 ' + W + " " + H + '" xmlns="http://www.w3.org/2000/svg">' +
           '<rect x="' + PAD + '" y="' + PAD + '" width="' + (W - PAD * 2) + '" height="' + (H - PAD * 2) + '" fill="none" stroke="var(--hair)"/>' +
-          // M2 기준선(정의상 0=floor, 1=ceiling)
-          '<line x1="' + PAD + '" y1="' + y(0).toFixed(1) + '" x2="' + (W - PAD) + '" y2="' + y(0).toFixed(1) + '" stroke="var(--ink-mute)" stroke-dasharray="2,3"/>' +
-          '<line x1="' + PAD + '" y1="' + y(1).toFixed(1) + '" x2="' + (W - PAD) + '" y2="' + y(1).toFixed(1) + '" stroke="var(--ink-mute)" stroke-dasharray="2,3"/>' +
-          // M3 스코프별 기준선(포인트마다 다를 수 있어 실선 대신 점선 경로)
+          // M2 기준선(정의상 0=floor, 1=ceiling) — M2를 아예 안 그리는 신호(배경 활동 수준)에서는
+          // 이 기준선도 뺀다. 안 그릴 곡선의 기준선만 남으면 "왜 곡선이 없지"라는 혼란만 남긴다.
+          (onlyM3
+            ? ""
+            : '<line x1="' + PAD + '" y1="' + y(0).toFixed(1) + '" x2="' + (W - PAD) + '" y2="' + y(0).toFixed(1) + '" stroke="var(--ink-mute)" stroke-dasharray="2,3"/>' +
+              '<line x1="' + PAD + '" y1="' + y(1).toFixed(1) + '" x2="' + (W - PAD) + '" y2="' + y(1).toFixed(1) + '" stroke="var(--ink-mute)" stroke-dasharray="2,3"/>') +
+          // M3 스코프별 기준선(포인트마다 다를 수 있어 실선 대신 점선 경로) — 항상 그린다.
           '<path d="' + m3FloorPath + '" fill="none" stroke="' + ds + '" stroke-opacity="0.4" stroke-dasharray="2,3"/>' +
-          '<path d="' + m2Path + '" fill="none" stroke="' + nw + '" stroke-width="1.6"/>' + dots("m2", nw) +
+          (onlyM3 ? "" : '<path d="' + m2Path + '" fill="none" stroke="' + nw + '" stroke-width="1.6"/>' + dots("m2", nw)) +
           '<path d="' + m3Path + '" fill="none" stroke="' + ds + '" stroke-width="1.6"/>' + dots("m3", ds) +
           ticks +
         "</svg>" +
         '<div class="org-sweep-legend">' +
-          '<span><i style="background:' + nw + '"></i>' + t("org.sweepLegendM2") + "</span>" +
+          (onlyM3 ? "" : '<span><i style="background:' + nw + '"></i>' + t("org.sweepLegendM2") + "</span>") +
           '<span><i style="background:' + ds + '"></i>' + t("org.sweepLegendM3") + "</span>" +
         "</div>" +
-        '<div class="org-sweep-note">' + t("org.sweepFloorCeiling") + "</div>" +
+        '<div class="org-sweep-note">' + t(onlyM3 ? "org.sweepFloorOnlyM3" : "org.sweepFloorCeiling") + "</div>" +
+        (onlyM3 ? '<div class="org-sweep-note org-sweep-omit">' + t("org.sweepBackgroundOmitNote") + "</div>" : "") +
         '<div class="org-sweep-note org-sweep-singleseed">' + t("org.sweepSingleSeedNote") + (timing ? " · " + esc(timing) : "") + "</div>" +
       "</div>"
     );
@@ -711,7 +751,7 @@ export function createOrgView(container, deps) {
         '<div class="org-view-head">' +
           '<div><div class="org-view-title">' + t("org.title") + '</div><div class="org-view-subtitle">' + t("org.subtitle") + "</div></div>" +
           '<div class="org-view-actions">' +
-            '<button type="button" data-action="reset">' + t("org.resetBtn") + "</button>" +
+            '<button type="button" data-action="reset" ' + (running ? "disabled" : "") + ">" + t("org.resetBtn") + "</button>" +
             '<button type="button" class="org-run-btn" data-action="run" ' + (running ? "disabled" : "") + ">" + (running ? t("org.runBtnBusy") : t("org.runBtn")) + "</button>" +
           "</div>" +
         "</div>" +

@@ -87,6 +87,9 @@
   </div>
 
   <div class="boot" id="boot"></div>
+  <!-- M4 재실행(rerun) 진행 배너 (Fix2) — 기본은 hidden, main.js가 performRerun() 동안만 보여준다.
+       텍스트는 항상 t()로 채운다(app.rerunBanner). -->
+  <div class="rerun-banner" id="rerun-banner" hidden></div>
 </div>
 
 <script src="vendor/deck.gl.min.js"></script>

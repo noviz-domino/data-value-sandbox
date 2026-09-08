@@ -83,6 +83,8 @@ register({
     "app.bootInference": "표적 추론 / 후보 {n}개",
     "app.bootCommand": "지휘 계층",
     "app.bootWithheld": "비공개",
+    // 재실행(rerun) 진행 배너 (M4 Fix2) — org-view의 "적용"이 앱 전체를 다시 돌리는 동안 표시.
+    "app.rerunBanner": "재실행 중 — 새 설정으로 지도·시간창·분석을 다시 계산하고 있다…",
   },
   en: {
     "app.seed": "Seed",
@@ -125,6 +127,7 @@ register({
     "app.bootInference": "TARGET INFERENCE / {n} CANDIDATES",
     "app.bootCommand": "COMMAND LAYER",
     "app.bootWithheld": "WITHHELD",
+    "app.rerunBanner": "RE-RUNNING — recomputing map, window and analysis with the new configuration…",
   },
 });
 // "AO"(Area of Operations)와 부트 타이틀("GROUND TRUTH CONSOLE"/"v0.9.1")은 두 언어에서 동일한
@@ -187,10 +190,17 @@ async function boot() {
     }
   }
 
-  runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities, simulateFn, landGeo: ne50land, coastGeo: ne50coast });
+  runApp({
+    events, periods, byDay, days, maxPerDay, campaigns, facilities, simulateFn,
+    landGeo: ne50land, coastGeo: ne50coast,
+    // M4 Fix2(진짜 requestRerun): 이 둘을 넘겨야 runApp 안에서도 org-view의 오버라이드로
+    // simulate()를 직접 다시 돌릴 수 있다(boot()가 이미 fetch/변환해 둔 것을 재사용 — 다시
+    // fetch하지 않는다).
+    landTest, facilitiesRaw,
+  });
 }
 
-function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities, simulateFn, landGeo, coastGeo }) {
+function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities, simulateFn, landGeo, coastGeo, landTest, facilitiesRaw }) {
   // ── DOM 참조 ─────────────────────────────────────────────────────────
   const mapEl = document.getElementById("map");
   const wac = document.getElementById("wac");
@@ -221,10 +231,28 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
 
   // ── 데이터 접근 seam (SPEC_M3 §6.2) ───────────────────────────────────
   // 이 앱의 모든 뷰는 이제부터 events 배열을 직접 filter/index하지 않고 queryEvents()만 부른다.
-  const { queryEvents } = createEventQuery(events);
-  const facilitiesById = new Map(facilities.map((f) => [f.id, f]));
+  // M4 Fix2: 재실행(rerun) 뒤 events 배열 자체가 통째로 새 참조로 바뀌므로, 이 색인들은 전부
+  // let으로 두고 applyNewRun()에서 다시 만든다(createEventQuery(events)가 인자를 클로저로 붙잡아
+  // 두기 때문에, events만 재대입해서는 자동으로 갱신되지 않는다 — queryEvents 자체를 다시 만들어야 한다).
+  let queryEvents = createEventQuery(events).queryEvents;
+  let facilitiesById = new Map(facilities.map((f) => [f.id, f]));
   // 답 배지(§answer-key 블록) 전용 색인 — campaign.eventIds로 좌표를 다시 찾아 centroid를 낼 때만 쓴다.
-  const eventsById = new Map(events.map((e) => [e.id, e]));
+  let eventsById = new Map(events.map((e) => [e.id, e]));
+
+  // ── M4 Fix2: 실제 재실행(requestRerun)이 앱 전체에 적용한 설정 ─────────────────────────
+  // committedOverrides는 지금 지도/피드/ANL/결과 패널이 보고 있는 run을 만든 overrides다.
+  // null이면 기본(§7 커밋된 데이터셋)과 완전히 같은 경로 — simulate()에 overrides를 아예 안 넘긴
+  // 부팅 경로와 동일한 결과가 나온다(byte-identical 보장의 핵심).
+  let committedOverrides = null;
+  // 지도(map.js)·이 파일의 카드 표시(chrome())가 참조하는 "지금 유효한" org/directive 값.
+  // overrides.orgs/overrides.directives는 organizations.js의 applyOrgOverrides/applyDirectiveOverrides가
+  // 만든, ORGS/DIRECTIVES와 완전히 같은 모양(shape)의 배열/객체라 그대로 대체해 쓸 수 있다.
+  let activeOrgs = ORGS;
+  let activeDirectives = DIRECTIVES;
+  // simulateFn을 committedOverrides를 반영하는 판으로 다시 정의한다(boot()이 넘겨준 것은 seed만
+  // 받는 "기본 전용" 클로저였다). evaluateInference()는 시드마다 이 함수를 다시 부르므로, 여기서
+  // committedOverrides를 클로저로 읽게 해두면 cachedEval도 "지금 적용된 설정" 기준으로 계산된다.
+  simulateFn = (seed) => simulate({ seed, landTest, facilities: facilitiesRaw, withCampaigns: true, overrides: committedOverrides });
 
   // ── 시간창(time window) 상태 (SPEC_M3 §6.1) ───────────────────────────
   // 기본값: 전체 구간(days)의 "가장 최근 100일". 실 스트리밍 소스는 처음부터 끝까지 다 아는
@@ -346,6 +374,119 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     }
   }
   setTimeout(runCachedEvaluation, 0);
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // M4 Fix2 — 진짜 재실행(requestRerun). org-view.js §3.2/§3.3의 "적용(apply)" 버튼이 부르는
+  // 실제 통로. 예전 viewDeps.requestRerun 스텁은 seed만 받아 simulate()를 한 번 더 돌리고
+  // 결과를 버렸다(org-view는 자기 전용 파이프라인으로 따로 미리보기를 계산했다) — 그래서 지도·
+  // 피드·시간창·ANL 뷰·결과 패널은 org-view에서 뭘 바꾸든 항상 기본 설정 그대로였다.
+  //
+  // 이 함수는 overrides({orgs, directives, noiseMultiplier} | null — organizations.js의
+  // applyOrgOverrides/applyDirectiveOverrides가 만드는 것과 정확히 같은 모양, simulate()가
+  // 그대로 먹는다)로 simulate()를 다시 돌리고, 그 결과를 앱 상태 전체에 갈아 끼운다
+  // ("hot-swap") — map.js/window-control.js/analysis-view.js/results-panel.js 중 어느 것도
+  // 새 데이터를 몰라서 낡은 화면을 계속 보여주는 일이 없게 한다.
+  // ══════════════════════════════════════════════════════════════════════════════════
+  let rerunning = false;
+  const rerunBannerEl = document.getElementById("rerun-banner");
+  function setRerunBanner(visible) {
+    if (!rerunBannerEl) return;
+    if (visible) rerunBannerEl.textContent = t("app.rerunBanner");
+    rerunBannerEl.hidden = !visible;
+  }
+
+  /**
+   * simulate()가 실제로 만든 새 run을 앱 상태 전체에 반영한다. 정답지 분리(§Constraints)
+   * 재확인: 재실행은 "다시 답이 샐 수 있는 새 기회"이므로, 이전 Analyze/Scan 결과(랭킹)를
+   * 전부 무효화해 낡은 순위가 새 run 위에서 "지금 것"인 척 남지 않게 한다.
+   * @param {{events,periods,byDay,days,campaigns,facilities}} run - simulate()의 반환값
+   * @param {object|null} overrides - 이번 run을 만든 오버라이드(null이면 기본)
+   */
+  function applyNewRun(run, overrides) {
+    committedOverrides = overrides;
+    activeOrgs = overrides && overrides.orgs ? overrides.orgs : ORGS;
+    activeDirectives = overrides && overrides.directives ? overrides.directives : DIRECTIVES;
+
+    events = run.events;
+    periods = run.periods;
+    days = run.days;
+    campaigns = run.campaigns;
+    facilities = run.facilities;
+
+    // events/facilities가 통째로 새 참조로 바뀌었으므로, 그 위에 얹힌 색인/쿼리 seam도 다시 만든다.
+    queryEvents = createEventQuery(events).queryEvents;
+    facilitiesById = new Map(facilities.map((f) => [f.id, f]));
+    eventsById = new Map(events.map((e) => [e.id, e]));
+
+    // 이전 Analyze/Scan 결과 무효화 — "재실행 뒤 낡은 랭킹이 지금 것처럼 보이면 안 된다".
+    mode = "idle";
+    lastAnalyze = null;
+    lastScan = null;
+    scanProgress = null;
+    scanCache.clear();
+    selectedFacilityId = null;
+    scopeDraft = null;
+    cachedEval = null;
+
+    // reveal 카드/중립 요약 — org 개수 자체는 안 바뀌지만, 새 periods/facilities 기준으로
+    // 다시 그려야 EV/RAD/directive 배지가 새 run을 반영한다(Job1 규칙은 그대로 유지: reveal
+    // 꺼짐이면 여전히 중립 요약 두 줄뿐).
+    renderCellsShell();
+    applyI18n();
+    statCellsEl.hidden = !reveal;
+
+    // 시간창은 리셋하지 않는다 — 사용자가 보고 있던 구간(day 범위)은 그대로 두고, 그 구간 안의
+    // "내용"만 새 run 것으로 바꾼다. setWindow가 days 범위로 다시 clamp하고 visibleEvents/입력창을
+    // 새로 채운 뒤 refreshScopePreview()까지 불러 지도·결과 패널을 갱신한다.
+    setWindow(windowStart, windowEnd);
+
+    // org-view/data-view가 들고 있는 deps.result도 새 run을 가리키게 한다(§seam 계약).
+    viewDeps.result = { events, campaigns, facilities, periods, days, startDate: D0 };
+    // ANL 뷰는 캐싱된 result를 새로 계산하도록 무효화한다(이미 한 번 진입했었다면 즉시 다시 그린다).
+    anlView.setData({ events, periods });
+    // notifyViewStateSubscribers()는 위 setWindow -> refreshScopePreview()가 이미 불렀다(중복 호출 없음).
+
+    setTimeout(runCachedEvaluation, 0);
+  }
+
+  /**
+   * 실제 재실행 진입점. overrides는 simulate()가 바로 먹는 모양이거나 null(기본으로 되돌리기).
+   * ~3초 걸리는 동기 simulate() 호출 앞에 setTimeout(fn, 0)을 둬서, 무거운 계산이 시작되기 전에
+   * "재실행 중" 배너가 실제로 한 프레임 그려지게 한다 — org-view.js §3.3 sweep이 6번의 전체
+   * 사이클 사이에 쓰는 것과 같은 양보 패턴(완전한 응답성은 아니지만 최소한 "진행 중"이라는
+   * 사실은 화면에 먼저 박힌다). requestAnimationFrame이 아니라 setTimeout을 쓰는 이유: rAF는
+   * 브라우저 탭/프리뷰 창이 화면에 보이지 않는 동안 아예 멈춘다(스로틀이 아니라 정지) — 사용자가
+   * 다른 탭을 보는 사이 "적용" 버튼을 누르면 그 순간 콜백이 영원히 안 오는 걸 실제로 겪었다.
+   * setTimeout은 백그라운드 탭에서도(스로틀은 되어도) 결국 실행되므로 이 경로에는 그게 맞다.
+   * @param {object|null} overrides
+   * @returns {Promise<{events,periods,campaigns,facilities,days,timingMs}|null>} 적용된 새 run
+   *   (org-view가 자기 미리보기 패널의 점수 계산에 그대로 재사용한다 — simulate()를 또 부르지 않는다).
+   */
+  function performRerun(overrides) {
+    if (rerunning) return Promise.resolve(null);
+    rerunning = true;
+    setRerunBanner(true);
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        setTimeout(() => {
+          let out = null;
+          try {
+            const t0 = performance.now();
+            const run = simulate({ seed: SEED, landTest, facilities: facilitiesRaw, withCampaigns: true, overrides });
+            const timingMs = performance.now() - t0;
+            applyNewRun(run, overrides);
+            out = { ...run, timingMs };
+          } catch (err) {
+            console.error("[requestRerun] 재실행 실패 — 앱 상태는 이전 run에 그대로 남는다.", err);
+          } finally {
+            rerunning = false;
+            setRerunBanner(false);
+            resolve(out);
+          }
+        }, 0);
+      }, 0);
+    });
+  }
 
   const resultsPanel = createResultsPanel(resultsEl, {
     onSelectCandidate: (fid) => {
@@ -731,10 +872,15 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
       ORGS.forEach((org, i) => {
         const p = periods.find((q) => q.org === org.key && day >= q.startDay && day < q.endDay);
         const directiveKey = p ? p.directive : "CONSOLIDATE"; // 활성 기간이 없을 때의 폴백. map.js DEFAULT_DIRECTIVE와 동일 규칙.
-        const dirDef = DIRECTIVES[directiveKey];
+        // M4 Fix2: 재실행(rerun)으로 org-view §12.1 신호 강도가 바뀌었을 수 있으므로, 반경/지침
+        // 배율은 정적 import(ORGS/DIRECTIVES)가 아니라 activeOrgs/activeDirectives에서 읽는다.
+        // activeOrgs는 applyOrgOverrides()가 만든, ORGS와 완전히 같은 순서·키의 배열이라 같은
+        // index i로 대응하는 org를 그대로 집을 수 있다.
+        const liveOrg = activeOrgs[i];
+        const dirDef = activeDirectives[directiveKey];
         const el = cellEls[i];
         el.querySelector("[data-ev]").textContent = pad(cnt[org.key], 3);
-        el.querySelector("[data-rad]").textContent = pad(Math.round(org.baseRadius * dirDef.radiusMult), 3);
+        el.querySelector("[data-rad]").textContent = pad(Math.round(liveOrg.baseRadius * dirDef.radiusMult), 3);
         const dd = el.querySelector("[data-dir]");
         dd.hidden = !reveal;
         // directive 이름(p.directive, 예: EXPAND)은 데이터셋 값이라 언어와 무관하게 원문 그대로 둔다
@@ -797,7 +943,9 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     }
 
     const day = windowEnd;
-    map.setFrame({ day, events: visibleEvents, orgs: ORGS, periods, reveal, visibleOrgs, ...inferenceFrame });
+    // M4 Fix2: activeOrgs/activeDirectives — 기본은 ORGS/DIRECTIVES와 참조가 같아(재실행 전) 지도의
+    // 프레임 캐시(map.js derivedCache)가 그대로 재사용된다. 재실행 뒤에만 다른 참조로 바뀐다.
+    map.setFrame({ day, events: visibleEvents, orgs: activeOrgs, directives: activeDirectives, periods, reveal, visibleOrgs, ...inferenceFrame });
     windowControl.draw({ windowStart, windowEnd, days });
     chrome();
 
@@ -883,20 +1031,23 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
   const viewDeps = {
     result: { events, campaigns, facilities, periods, days, startDate: D0 },
     seed: SEED,
-    queryEvents,
+    // queryEvents 자체를 값으로 넣지 않고 얇은 래퍼로 감싼다 — 재실행(rerun) 뒤 위 지역 변수
+    // queryEvents가 새 함수로 재대입돼도, 이 래퍼는 매 호출마다 "지금" 값을 다시 읽으므로 항상
+    // 최신 이벤트 배열을 본다(객체 리터럴이 그 순간의 값을 그대로 복사해두는 문제를 피한다).
+    queryEvents: (args) => queryEvents(args),
     getState: getViewState,
     onStateChange: (cb) => {
       viewStateSubscribers.add(cb);
       return () => viewStateSubscribers.delete(cb);
     },
-    // 지금은 seed만 반영해 simulateFn을 다시 돌리는 얇은 통로다 — organizations.js §7 파라미터
-    // (base/branches/baseRadius/seasonal/targetPreference 등)나 M4 §3.2 신호 강도 슬라이더를
-    // 실제로 오버라이드하는 기능은 simulate() 시그니처 자체를 넓혀야 하는 별도 작업이다
-    // (org-view.js 상단 주석 참고). 이 함수는 그 확장이 걸어 들어올 자리를 미리 파둔 것뿐이다.
-    requestRerun(opts = {}) {
-      const nextSeed = opts.seed != null ? opts.seed : SEED;
-      console.info("[viewDeps.requestRerun] seed=" + nextSeed + " 로 simulate()를 다시 돌린다(스텁 — 결과를 앱 상태에 아직 반영하지 않는다).");
-      return simulateFn(nextSeed);
+    // M4 Fix2 — 진짜 재실행. overrides는 simulate()가 바로 먹는 모양({orgs, directives,
+    // noiseMultiplier}) 또는 null(기본으로 되돌리기)이다. performRerun()이 실제로 simulate()를
+    // 다시 돌리고 지도·피드·시간창·ANL 뷰·결과 패널까지 앱 상태 전체를 새 run으로 갈아 끼운다
+    // ("hot-swap") — 예전처럼 seed만 받아 결과를 버리는 스텁이 아니다. 반환하는 Promise는 적용된
+    // run을 그대로 돌려주므로, org-view는 이 run을 자기 미리보기 점수 계산(scoreRun)에 재사용하고
+    // simulate()를 또 부르지 않는다.
+    requestRerun(overrides = null) {
+      return performRerun(overrides);
     },
   };
 

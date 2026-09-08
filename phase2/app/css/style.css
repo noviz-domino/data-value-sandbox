@@ -206,6 +206,14 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
 .boot.done{opacity:0;pointer-events:none;transition:opacity .5s}
 @media (prefers-reduced-motion:reduce){.dot.on{animation:none}}
 
+/* 재실행(rerun) 진행 배너 (M4 Fix2) — org-view의 "적용"이 실제로 앱 전체를 다시 돌리는 동안
+   화면 맨 위에 뜨는 진행 표시. 지도/시간창을 가리지 않게 statusbar 바로 아래, 얇게. */
+.rerun-banner{position:absolute;top:0;left:0;right:0;z-index:20;
+  background:var(--riser);border-bottom:1px solid var(--nw);color:var(--nw);
+  font-family:var(--f-cond);font-weight:600;font-size:11px;letter-spacing:.06em;
+  text-align:center;padding:5px 0}
+.rerun-banner[hidden]{display:none}
+
 /* ── 뷰 라우팅 (M2-T2): .wrap[data-view] 로 SIM/ORG/ANL/DAT 전환 ─────────────────────── */
 .viewpane{grid-column:2/4;grid-row:1;min-height:0;overflow:auto;background:var(--void)}
 .wrap[data-view="sim"] .viewpane{display:none}

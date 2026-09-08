@@ -21,7 +21,8 @@
 //     queryEvents: (args: { scope?: {lat,lon,radiusKm}, window?: {startDay,endDay} }) => object[],
 //     getState: () => ({ window: { startDay: number, endDay: number }, scope: {lat,lon,radiusKm} | null }),
 //     onStateChange: (cb: (state: ReturnType<getState>) => void) => (() => void),
-//     requestRerun: (opts?: { seed?: number }) => void,
+//     requestRerun: (overrides?: {orgs:object[], directives:object, noiseMultiplier:number} | null)
+//       => Promise<{events,periods,campaigns,facilities,days,timingMs}|null>,
 //   }
 //
 // 정답지 분리 주의(SPEC_M3 §3): 이 뷰는 result.campaigns를 "표시"하고 ground_truth.json으로

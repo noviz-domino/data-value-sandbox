@@ -240,7 +240,11 @@ function renderCaption(result) {
  * @param {HTMLElement} container
  * @param {{events:object[], periods:object[]}} args
  */
-export function createAnalysisView(container, { events, periods }) {
+export function createAnalysisView(container, initialArgs) {
+  // M4 Fix2: events/periods를 재대입 가능한 지역 변수로 둔다 — main.js가 org-view의 "적용"으로
+  // 앱을 재실행(rerun)하면 setData()가 이 값을 새 run 것으로 바꾸고 캐시를 버린다.
+  let events = initialArgs.events;
+  let periods = initialArgs.periods;
   let result = null;
 
   function render() {
@@ -274,5 +278,20 @@ export function createAnalysisView(container, { events, periods }) {
     if (result) render();
   });
 
-  return { render };
+  /**
+   * M4 Fix2 — 재실행(rerun) 뒤 main.js가 부른다. events/periods를 새 run 것으로 바꾸고 캐싱된
+   * result를 버려 다음 render()가 runAblation()을 새로 돌리게 한다. 이 뷰가 이미 한 번이라도
+   * 그려진 적 있으면(container.innerHTML이 비어있지 않으면) 지금 당장 다시 그린다 — 탭을 벗어나
+   * 있어도 CSS로 숨겨질 뿐 DOM 내용은 남아 있으므로, 다음에 그 탭을 열었을 때 낡은 숫자가 아니라
+   * 새 run 결과가 보이게 하려면 여기서 즉시 갱신해야 한다.
+   * @param {{events:object[], periods:object[]}} next
+   */
+  function setData(next) {
+    events = next.events;
+    periods = next.periods;
+    result = null;
+    if (container.innerHTML) render();
+  }
+
+  return { render, setData };
 }
