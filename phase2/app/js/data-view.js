@@ -159,8 +159,11 @@ const CSV_COLUMNS = ["id", "day", "date", "lat", "lon", "org", "branch", "method
  * @param {object} deps - 위 계약 참고
  */
 export function createDataView(container, deps) {
-  const events = deps.result.events;
-  const startDate = deps.result.startDate;
+  // 재실행(rerun)하면 setData()가 이 둘을 새 run 것으로 바꾸고 캐시를 전부 버린다.
+  // const로 붙잡아두면 조직 설정을 바꿔 적용한 뒤에도 표가 옛 데이터를 계속 보여주는데,
+  // 그건 명세가 못박은 실패("낡은 숫자가 현재인 척하는 것") 그 자체다.
+  let events = deps.result.events;
+  let startDate = deps.result.startDate;
 
   // day -> "YYYY-MM-DD" (UTC). CSV의 date 컬럼과 표의 날짜 컬럼이 항상 같은 값을 쓰도록
   // 이 한 함수로만 계산한다.
@@ -432,5 +435,19 @@ export function createDataView(container, deps) {
 
   onLangChange(render);
 
-  return { render };
+  /**
+   * 앱이 새 설정으로 재실행됐을 때 main.js가 부른다. 표·필터·정렬 캐시를 전부 버리고
+   * 새 run의 이벤트로 갈아탄 뒤, 이미 그려진 상태라면 다시 그린다.
+   * (내보내기는 deps.result를 직접 읽으므로 여기서 따로 손댈 게 없다.)
+   */
+  function setData(next) {
+    events = next.events;
+    startDate = next.startDate;
+    dayCache.clear();
+    filterCache = { key: null, rows: null };
+    sortCache = { filteredRef: null, key: null, rows: null };
+    if (container.childElementCount > 0) render();
+  }
+
+  return { render, setData };
 }

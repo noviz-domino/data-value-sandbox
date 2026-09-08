@@ -444,6 +444,8 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
     viewDeps.result = { events, campaigns, facilities, periods, days, startDate: D0 };
     // ANL 뷰는 캐싱된 result를 새로 계산하도록 무효화한다(이미 한 번 진입했었다면 즉시 다시 그린다).
     anlView.setData({ events, periods });
+    // DAT 뷰도 같은 이유로 갈아탄다 — 표가 옛 run을 계속 보여주면 낡은 숫자가 현재인 척하게 된다.
+    datView.setData({ events, startDate: D0 });
     // notifyViewStateSubscribers()는 위 setWindow -> refreshScopePreview()가 이미 불렀다(중복 호출 없음).
 
     setTimeout(runCachedEvaluation, 0);
