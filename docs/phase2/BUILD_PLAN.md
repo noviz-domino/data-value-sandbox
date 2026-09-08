@@ -24,7 +24,7 @@ Everything in SPEC §6–§9 (simulation rules, organizations, data contracts, a
 - **M1 — map & simulation view** ✅ DONE (2026-09-04). deck.gl + Natural Earth: world map, 5-year playback, org markers + radius, drift, reveal toggle, timeline, activity feed. Runs at `phase2/app/` (dev server: launch.json `app`, port 8779).
 - M2 — analysis view: ablation runs, floor/ceiling, confusion matrices. ✅ DONE (2026-09-04). Ladder: floor 38.8% → A 64.7% → B TIDEBREAK recall +14.9pp → C DRYSTONE recall +16.1pp, oracle ceiling 86.6% (true bound after wiring branch share). Orgs relocated to Lesser Sunda chain for overlap.
 - **M3 — target inference** ✅ DONE (2026-09-06). Infer which facility scattered incidents are preparing against, against 80% background noise. Top-1 39.3% → 51.5% (scope floor 13.5%, 3.81x lift); detection@10%FAR 5.0% → 14.5% density-matched. Encirclement is a reported null (−1.85pp). See [SPEC_M3.md](SPEC_M3.md).
-- M4 — data view + export, guided tour, density layer, seed variance.
+- **M4 — language toggle + analyst-first interaction + remaining views** ✅ DONE (2026-09-07). KO/EN toggle; neutral map with ground truth behind reveal; scope → explicit Analyze, plus Scan; organisations view with signal-strength sliders and the sweep; data view with separate exports; four-step guided tour. See [SPEC_M4.md](SPEC_M4.md).
 
 ### Why M3 was redefined
 
@@ -99,9 +99,9 @@ export function simulate({ seed, landTest })
 //       byDay: number[day][orgIndex],
 //       days: 1826, startDate: '2026-01-01' }
 ```
-- [ ] modules written
-- [ ] determinism + planted-signal check passes (SPEC §17 crit 4/5): base drift 8.2–8.4°, event-mean drift ≥6°, DRYSTONE Dec–Feb 25–35% of other months, zero naval events >30 km offshore, total events 1500–3000
-- [ ] reviewed, committed
+- [x] modules written
+- [x] determinism + planted-signal check passes (SPEC §17 crit 4/5): base drift 8.2–8.4°, event-mean drift ≥6°, DRYSTONE Dec–Feb 25–35% of other months, zero naval events >30 km offshore, total events 1500–3000
+- [x] reviewed, committed
 
 ### T3 — deck.gl map (Sonnet author, live-validated in T6 instead of separate reviewer) [DONE — committed]
 > map.js written & committed. Rendering correctness verified live in T6, not by a read-only reviewer (more effective for visual code, saves tokens).
@@ -120,14 +120,14 @@ Layers, per SPEC §11.1 intent, translated to deck.gl:
 - TIDEBREAK drift trail (PathLayer)
 - graticule + degree labels (LineLayer + TextLayer), or leave to a faint GeoJson graticule
 - Palette and type come from the prototype/`SPEC §15`: saturation only for orgs, IBM Plex, dark slate neutrals.
-- [ ] renders, pan/zoom smooth, no console errors
-- [ ] reviewed, committed
+- [x] renders, pan/zoom smooth, no console errors
+- [x] reviewed, committed
 
 ### T4 — UI shell + timeline (Sonnet author → light check) [DONE — committed]
 > Note for T5: the readout still shows `PX/DEG` / `PROJ EQUIRECT` from the Canvas prototype. With deck.gl, update to the deck zoom level and drop the equirect label (or set the real projection name).
 Adapt the prototype's `index.html` + CSS (already designed and validated): status bar, left rail, side org-cards + activity feed, bottom timeline, reveal toggle, transport controls, zoom buttons, boot sequence. Swap the `<canvas id="map">` for the deck.gl container. `timeline.js` keeps the Canvas timeline (bands per org, playhead, directive bands on reveal, with the `CONS/EXPA/SUPP` labels already tuned).
-- [ ] shell + timeline match prototype's look; charset meta present; `<meta charset="utf-8">` included
-- [ ] reviewed, committed
+- [x] shell + timeline match prototype's look; charset meta present; `<meta charset="utf-8">` included
+- [x] reviewed, committed
 
 ### T5 — wiring: main.js + vendor deck.gl + index.html script tag (Sonnet author) [DONE — committed]
 > Vendored deck.gl@9.3.11 locally (1.6MB, zero runtime network). Fixed the readout label (PX/DEG→ZOOM, EQUIRECT→WEB-MERCATOR). Resolved a real periods-shape mismatch between simulation.js (`{org,directive,startDay,endDay}`) and timeline.js (`{o,d,a,b}`) in the wiring layer.
@@ -139,12 +139,12 @@ Adapt the prototype's `index.html` + CSS (already designed and validated): statu
 - [x] DEVLOG M1 entry; committed
 - [x] M1 reported to user
 State object (SPEC §4), playback loop, control handlers, reveal, org visibility, zoom presets. Loads the three GeoJSON files, builds the land test from ne_110m, runs `simulate`, drives `map.setFrame` + timeline each frame.
-- [ ] full app runs end to end via local server
-- [ ] reviewed, committed
+- [x] full app runs end to end via local server
+- [x] reviewed, committed
 
 ### T6 — architect final review (Opus)
-- [ ] cross-module integ check, acceptance re-run, screenshot via capture-server, prototype-vs-app parity, DEVLOG entry, commit
-- [ ] report M1 to user
+- [x] cross-module integ check, acceptance re-run, screenshot via capture-server, prototype-vs-app parity, DEVLOG entry, commit
+- [x] report M1 to user
 
 ## M2 tasks & checklist — analysis view [CURRENT]
 
@@ -170,15 +170,15 @@ Ablation feature sets (SPEC §9.3), target = `org`, 80/20 split stratified by or
 - C: `+ target_type, month` → DRYSTONE gains
 `recovered = (accuracy - floor) / (ceiling - floor)`.
 **Oracle (the piece only synthetic data allows):** for each event compute, for each org, the probability that org's true rules would produce an event at this (lat,lon,day,branch,target): use the org's base position on that day (TIDEBREAK drifts), its effective radius under the directive active in `periods` for that day, branch ranges/shares, seasonal factor, target preference. `argmax` = oracle prediction; its accuracy over the test split = ceiling. Oracle reads the true model — it lives in the scoring path, never a feature.
-- [ ] written; a node self-test asserts: floor ≈ 59% region? (no — org counts are ~equal here, so floor ≈ 33-38%); ceiling strictly between best model accuracy and 100%; run B TIDEBREAK recall exceeds run A by a clear margin; every accuracy in [floor, ceiling]
-- [ ] reviewed, committed
+- [x] written; a node self-test asserts: floor ≈ 59% region? (no — org counts are ~equal here, so floor ≈ 33-38%); ceiling strictly between best model accuracy and 100%; run B TIDEBREAK recall exceeds run A by a clear margin; every accuracy in [floor, ceiling]
+- [x] reviewed, committed
 
 ### M2-T2 — analysis view UI + view routing `analysis-view.js` + main.js nav (Sonnet author) [live-validated]
 - Wire the left-rail nav (SIM/ORG/ANL/DAT) to switch views; ANL shows the analysis view, others keep M1/placeholder.
 - Analysis view renders (SPEC §13, design per §15 — saturation only for orgs, IBM Plex, dark slate): (1) bounded-accuracy track per run [floor | achieved | ceiling] with recovered-fraction %; (2) run comparison table (features, floor, accuracy, ceiling, recovered); (3) confusion-matrix heatmaps per run; (4) per-class precision/recall grouped bars. Every accuracy shows floor AND ceiling adjacent — never bare.
 - Charts are Canvas 2D or lightweight SVG, matching the console aesthetic. Round all numbers.
-- [ ] renders, nav switches, numbers match analysis.js
-- [ ] committed
+- [x] renders, nav switches, numbers match analysis.js
+- [x] committed
 
 ### M2-T3 — architect final review (Opus) [DONE]
 - [x] **Fix from M2-T1 review [MAJOR]:** wired branch `share` into simulation.js (377d3d3) — oracle now a true bound; both self-tests pass; ladder held. Reset the TIDEBREAK-delta assertion to a principled ≥10pp (split noise ~1-2pp).
@@ -263,39 +263,42 @@ Spec: [SPEC_M4.md](SPEC_M4.md). Ground-truth separation (SPEC_M3 §3) still appl
 - [x] i18n contract (per-module `register()`, no shared dictionary file — several agents edit these in parallel)
 - [x] org view + signal sliders + sweep, data view + export, guided run
 
-### M4-T1 — i18n core + convert existing UI (Sonnet author) [BLOCKS T2-T4]
-- [ ] `i18n.js` per §1.4; KO/EN control in the status bar
-- [ ] every existing screen string converted; **inline "(한국어)" glosses removed** — superseded by the toggle
-- [ ] dataset values (org/branch/method/target/facility id+kind/directive) stay English in both languages
+### M4-T1 — i18n core + convert existing UI (Sonnet author) [DONE — 27d1be2]
+- [x] `i18n.js` per §1.4; KO/EN control in the status bar
+- [x] every existing screen string converted; **inline "(한국어)" glosses removed** — superseded by the toggle
+- [x] dataset values (org/branch/method/target/facility id+kind/directive) stay English in both languages
 
-### M4-T2 — analyst-first interaction: neutral dots, scope-then-analyze, scan (Sonnet author) [PRIORITY]
+### M4-T2 — analyst-first interaction (Sonnet author) [DONE — ea6feff, c43f87b]
 > Added after the user saw the app and asked "what is this?". Two defects, both architect's:
 > events were coloured by their producing org **always** (`map.js` getFillColor, no reveal check) — the
 > answer was painted on screen before any question was asked; and target inference, the point of the
 > tool, was a side panel reachable only by knowing to drag. The M3 review checked that ground truth
 > never reaches the *model*; nobody checked whether it reaches the *screen*. It did.
-- [ ] neutral event dots by default; org colours/bases/radii/directives gated behind reveal (SPEC_M4 §2)
-- [ ] facilities visible by default — they are the answer space, not the answer
-- [ ] scope selection as the first-class first step; explicit **Analyze** action (user chose this over
+- [x] neutral event dots by default; org colours/bases/radii/directives gated behind reveal (SPEC_M4 §2)
+- [x] facilities visible by default — they are the answer space, not the answer
+- [x] scope selection as the first-class first step; explicit **Analyze** action (user chose this over
       auto-run: "I might want to place a point and size a region first")
-- [ ] **Scan**: grid the viewport at 80 km (max 60 points), rank top 10 facilities by standout z,
+- [x] **Scan**: grid the viewport at 80 km (max 60 points), rank top 10 facilities by standout z,
       selecting a row moves the scope there
-- [ ] weak/empty states given room — a ranking backed by 12 events must not look like one backed by 300
+- [x] weak/empty states given room — a ranking backed by 12 events must not look like one backed by 300
 
-### M4-T3 — organisations view + signal sliders + sweep (Sonnet author)
-- [ ] per-org editable form, stale-state banner, reset to defaults, preview map (§3.1)
-- [ ] signal sliders incl. the new noise-ratio slider (§3.2)
-- [ ] sweep at 6 strengths plotting M2 recovered fraction + M3 top-1 against their floors, single seed, labelled as such (§3.3)
+### M4-T3 — organisations view + signal sliders + sweep (Sonnet author) [DONE — cd98d0d, 5d9be14]
+- [x] per-org editable form, stale-state banner, reset to defaults, preview map (§3.1)
+- [x] signal sliders incl. the new noise-ratio slider (§3.2)
+- [x] sweep at 6 strengths plotting M2 recovered fraction + M3 top-1 against their floors, single seed, labelled as such (§3.3)
 
-### M4-T4 — data view + export (Sonnet author)
-- [ ] sortable/filterable event table, row count + filter summary (§4)
-- [ ] separate `events.csv` and `ground_truth.json` exports — no combined export, by design
+### M4-T4 — data view + export (Sonnet author) [DONE — 29218e1, c1c8d72]
+- [x] sortable/filterable event table, row count + filter summary (§4)
+- [x] separate `events.csv` and `ground_truth.json` exports — no combined export, by design
 
-### M4-T5 — guided first run (Sonnet author)
-- [ ] four anchored steps, dismissible, once-only via localStorage, restart affordance (§5)
+### M4-T5 — guided first run (Sonnet author) [DONE — b6100e6]
+- [x] four anchored steps, dismissible, once-only via localStorage, restart affordance (§5)
 
-### M4-T6 — architect final review (Opus)
-- [ ] cross-review, live run, screenshots in both languages, DEVLOG, README, commit
+### M4-T6 — architect final review (Opus) [DONE]
+- [x] live run at a real viewport; reveal-off DOM string check for all six org-name forms returns empty, including after a re-run
+- [x] apply/reset moves the whole app (scope events 60→27→60; data table 3259→646→3259)
+- [x] both self-tests pass unchanged; screenshot [../screenshots/app-analyst-view.png](../screenshots/app-analyst-view.png)
+- [x] DEVLOG + README updated, committed
 
 ## Resume notes (M4)
 

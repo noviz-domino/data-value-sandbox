@@ -208,6 +208,87 @@ The reviewer also flagged a dead `revealTargetId` prop as a leak landmine, which
 
 Five rounds on one metric feels like thrashing. It was not: each round replaced a number that looked fine with a number that means something. The 0% detection rate was more valuable than the 17% would have been, because chasing it produced a metric that survives a fair comparison. The pattern in all four errors is the same one this project was built to catch — **a performance number with no honest baseline beside it** — and it kept reappearing in new costumes: a global floor for a local task, a probability mistaken for evidence, an unfair control, an unmatched density.
 
+
+## 2026-09-07 — M4: the milestone a single question reshaped
+
+M4 was planned as language toggle, organisations view, data view, guided run. Then the project owner opened the app for the first time and asked:
+
+> *"three labelled things move in a line and coloured dots appear around them — what is this?"*
+
+That question was worth more than the plan. Two defects, both mine, and both invisible to everyone who had already been staring at the thing.
+
+### The screen was giving away its own answer
+
+`map.js` painted every event dot by the organisation that produced it — `getFillColor: (d) => [...colorOf(d.org), 90]`, with no reveal check. The answer was on screen before any question was asked, so of course there was nothing to analyse.
+
+The M3 review had verified, carefully and correctly, that no ground truth reaches the **model**. Nobody checked whether it reaches the **screen**. It did.
+
+And the thing the owner actually wanted — *"designate a location, or automatically analyse a region, and predict the target"* — already existed. It was M3. It was just a side panel you could only reach by knowing to drag on the map, buried under a default view that played back the answer like a screensaver.
+
+### The corrected default
+
+Events now render neutral. Organisation colours, bases, radius circles and directive state are ground truth and appear only under reveal, **omitted from the layer array entirely** rather than merely hidden. Candidate facilities stay visible — public infrastructure is the answer *space*, not the answer.
+
+On top of that, the flow the owner described: place a point, size a region, set a period, then press **Analyze**. They chose the explicit button over auto-running on load, and their reasoning is the design rationale — *"I might only want to look at one region of Korea."* A **Scan** action covers the other case, gridding the viewport and ranking what stands out.
+
+### Fixing the map was not fixing the leak
+
+With the map neutral and verified down to WebGL pixel readback, the side panels were still publishing the answer. The activity feed tagged every row with its producing organisation — `TIDE 8.6S 121.8E · FIREARM`, `DRYS 8.7S 118.3E · FIREARM` — which is per-event attribution, exactly the thing the tool asks you to infer. The org cards disclosed that there are three organisations, their names, their event counts and their radii.
+
+The lesson is about the shape of the verification, not the code: **a check that proves the canvas is clean says nothing about the DOM beside it.** The criterion changed from "does it look right" to *no organisation name may appear anywhere in the rendered document with reveal off* — a string search over `outerHTML`, run in both states. That check would have caught the original defect too.
+
+A real CSS bug surfaced while fixing it: `.stat{display:flex}` beat the user-agent `[hidden]{display:none}` rule, because author styles win over user-agent styles regardless of specificity. Setting `.hidden = true` did nothing visually.
+
+### Two languages, not one line with both
+
+M3 had shipped English text with Korean glosses in parentheses — `floor (무작위 기준선)`. The owner tried it and it reads badly: two languages on one line means neither gets read, and a dense HUD has no room. Replaced with two complete versions and a toggle.
+
+The architectural decision that mattered: **each module registers its own strings** rather than sharing one dictionary file. Several agents were editing these modules in parallel, and a shared file is a guaranteed lost-update conflict. Dataset values — organisation names, branch, method, target, facility ids — stay English in both languages, because they are the data itself and appear verbatim in the exported CSV; translating them would desynchronise the interface from the files it produces.
+
+### The data view had to make a judgement, so it made it explicitly
+
+This is the view whose purpose is to show and export the answer key — but a user arriving from the map has just been carefully kept from seeing attribution. It got its own local reveal toggle, defaulting off (the `org` column masked), with the reason stated on screen. Exports are exempt: `events.csv` and `ground_truth.json` always contain real values, because the file *is* the answer key.
+
+The two exports are never combined into one button. Keeping them separate at every point in the interface is what keeps the separation a habit rather than a rule someone remembers.
+
+### The organisations view, and a sweep that was quietly lying
+
+`simulate()` gained an optional `overrides` argument; omitting it leaves the reference identity and RNG consumption untouched, so the committed numbers stay byte-identical — verified against both self-tests before and after.
+
+Two findings came out of building it.
+
+A genuine crash: at background level 0 there are no background events at all, the KNN training set is empty, and `knnClassify` died. It now returns a labelled degenerate result.
+
+And a subtler one. The sweep plotted two curves against the "noise ratio" slider, and they moved in **opposite directions** — M3's target inference fell from ~42% to ~18% while M2's recovered fraction *rose*. Not a bug: the slider scales background *tempo*, which adds distractors for M3 while handing M2's classifier more same-class training data. But a reader would conclude "more noise makes classification easier", which is false, and the sweep is supposed to be this project's headline output.
+
+The knob was misnamed, and two metrics that answer different questions were being drawn on one axis. This is the same failure mode as every other error this project has caught, in yet another costume: **a number presented without what makes it readable.**
+
+### A false diagnosis worth recording
+
+The guided tour would not auto-start. The anchors resolved as invisible, so I concluded the boot overlay was covering them and added a retry loop.
+
+Wrong. The real cause was that the browser pane I was testing in had **zero width** — `document.body` measured 0px across — so every element on the page read as not visible. At a real 1280×800 viewport the tour starts immediately, at step 1, with no retry needed.
+
+That is the third time this project has been bitten by measuring layout in a container with no size, and the first time it produced a confident wrong explanation rather than a visible bug. The retry stayed in — a tour that silently never appears is worse than one that waits — but the note in the spec is now blunt: **set a real viewport before judging anything visibility-dependent.**
+
+### Fixing the sweep, and a banner that was writing cheques the app could not cash
+
+Two closing repairs.
+
+The background-activity slider is now named for what it does, and on that axis the sweep plots **only the M3 curve**, with a line under the chart saying why M2 was dropped. The alternative — redesigning the knob to hold total event count constant and vary only the campaign/background proportion — was considered and deliberately not taken: it needs a different sampler in `simulate()`, and the misreading is fully cured by not drawing two incomparable things on one axis.
+
+The larger repair: **`requestRerun` was a stub.** The organisations view ran its own private simulation for its preview numbers while the map, feed, analysis view and results panel silently stayed on the default configuration. The "Re-run required" banner was promising something the app did not do. It now hot-swaps the live run — applying background activity 0 moves the results panel from 60 events in scope to 27, and Reset puts it back to exactly 60.
+
+A third instance of the same trap turned up while wiring it: the first implementation used a double `requestAnimationFrame` to force a paint before the blocking `simulate()` call, which **hangs forever when the tab is not visible**, because rAF is paused rather than throttled in a hidden pane. This project has now been bitten by hidden-pane rAF, by zero-size containers, and by stale module caches — all three are failures of *measuring the environment*, not of the code being measured.
+
+And the data view had the same staleness bug as the banner, one level down: it captured `events` at creation and never refreshed, so after an apply the table still showed the old run. Same `setData()` treatment as the analysis view. Verified: 3,259 rows → 646 with background at zero, back to 3,259 on reset.
+
+### Where M4 leaves the tool
+
+Opening the app now shows what an analyst has: neutral dots, candidate facilities, and nothing about who did what. You pick a region, pick a period, and press **분석 실행 / Analyze**; or press **주변 스캔 / Scan** if you have no particular region in mind. Reveal turns the answer key on so you can mark your own work. The default screen: [../screenshots/app-analyst-view.png](../screenshots/app-analyst-view.png). There are four views, two complete languages, an editable world with a sweep over signal strength, an exportable dataset, and a four-step tour for someone arriving cold.
+
+The verification standard moved with it. It is no longer "does the screen look right" but **"does the rendered document contain the answer when it should not"** — a string search run in both reveal states, after every re-run. That check is cheap, it is unambiguous, and it would have caught the defect that started this milestone.
+
 ## Next
 
 - M3: organizations view + signal-strength sliders + the sweep (how strong must a signal be before it's detectable)
