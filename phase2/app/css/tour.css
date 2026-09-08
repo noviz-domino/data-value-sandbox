@@ -2,17 +2,115 @@
    style.css/다른 view CSS와 접촉면을 만들지 않기 위해 일부러 최소한으로 시작한다.
    색상은 phase2/app/js/palette.js / css/style.css의 :root 커스텀 프로퍼티만 쓸 것. */
 
-.tour-stub {
+/* 오버레이 전체 컨테이너. pointer-events:none으로 시작해 하이라이트 박스 자체는 클릭을 가로채지
+   않는다(투어가 지도 클릭/드래그 같은 앱 조작을 막으면 안 된다 — SPEC_M4 지시사항) — 실제로
+   클릭 가능해야 하는 카드/버튼만 밑에서 pointer-events:auto로 되돌려 둔다. */
+.tour-root {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 20;
-  max-width: 260px;
-  padding: 10px 14px;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.tour-root[hidden] { display: none; }
+
+/* anchor 엘리먼트 하나에 대응하는 하이라이트 테두리. top/left/width/height는 매번 show-time에
+   실측해 JS가 인라인으로 채운다(고정된 좌표를 굳혀두지 않는다 — 이 프로젝트가 이미 두 번 겪은
+   함정과 같은 종류). */
+.tour-hl {
+  position: fixed;
+  border: 2px solid var(--nw);
+  border-radius: 4px;
+  box-shadow: 0 0 0 4000px rgba(11, 16, 23, 0.55), 0 0 16px 2px rgba(87, 199, 234, 0.55);
+  pointer-events: none;
+}
+
+/* 여러 하이라이트가 동시에 뜨는 4단계(scope + results)에서 두 번째 이후 박스는 화면 전체를
+   또 덮으면 겹쳐서 더 어두워지므로 바깥 dim은 첫 박스만 담당하게 한다. */
+.tour-hl ~ .tour-hl {
+  box-shadow: 0 0 16px 2px rgba(87, 199, 234, 0.55);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tour-hl { transition: top 0.15s ease, left 0.15s ease, width 0.15s ease, height 0.15s ease; }
+  .tour-card { transition: top 0.15s ease, left 0.15s ease; }
+}
+
+.tour-card {
+  position: fixed;
+  pointer-events: auto;
+  max-width: 300px;
   background: var(--riser);
   border: 1px solid var(--hair-lit);
+  border-radius: 6px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-family: var(--f-sans);
+}
+
+.tour-progress {
+  font-family: var(--f-cond);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-mute);
+  margin-bottom: 6px;
+}
+
+.tour-text {
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--ink);
+  margin-bottom: 12px;
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tour-btn {
   font-family: var(--f-cond);
   font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--hair-lit);
+  background: var(--deck);
+  color: var(--ink);
   cursor: pointer;
 }
+.tour-btn:hover { border-color: var(--nw); }
+
+.tour-btn-ghost {
+  background: transparent;
+  color: var(--ink-dim);
+  border-color: transparent;
+}
+.tour-btn-ghost:hover { color: var(--ink); border-color: var(--hair-lit); }
+
+.tour-btn-primary {
+  background: var(--nw);
+  color: var(--void);
+  border-color: var(--nw);
+  font-weight: 600;
+  margin-left: auto;
+}
+.tour-btn-primary:hover { filter: brightness(1.08); }
+
+/* 항상 떠 있는 "투어 다시보기" 버튼 — 화면 어디에도 방해되지 않게 좌하단 구석에 작게 둔다. */
+.tour-restart {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: 35;
+  font-family: var(--f-cond);
+  font-size: 11px;
+  padding: 5px 10px;
+  background: var(--riser);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  color: var(--ink-mute);
+  cursor: pointer;
+  opacity: 0.7;
+}
+.tour-restart:hover { opacity: 1; color: var(--ink); border-color: var(--hair-lit); }
