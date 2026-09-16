@@ -7,6 +7,7 @@
 > **상태** · 2026-09 개발 동결. 아래 결과까지 동작하며 추가 개발 계획은 없습니다.
 > **데이터** · 1단계는 실제 GTD 15만여 건. 2단계는 합성 데이터이며, 생성 비율만 실제 GTD 분포에서 가져왔습니다.
 > **기술** · 브라우저에서 도는 JavaScript 앱(deck.gl). 머신러닝은 직접 구현한 KNN 하나입니다.
+> **실행** · 설치 없이 바로 열어볼 수 있습니다 → **[https://noviz-domino.github.io/data-value-sandbox/](https://noviz-domino.github.io/data-value-sandbox/)**
 
 ---
 
@@ -199,7 +200,9 @@
 
 ## 실행
 
-브라우저에서 도는 정적 앱이라 서버·API 키가 필요 없습니다. 로컬에서 띄우려면:
+**[여기서 바로 실행됩니다](https://noviz-domino.github.io/data-value-sandbox/)** — GitHub Pages에 올려둔 것으로, 설치도 서버도 필요 없습니다.
+
+직접 띄워보고 싶다면 (정적 앱이라 API 키가 필요 없습니다):
 
 ```bash
 python -m http.server 8779 --directory phase2/app
