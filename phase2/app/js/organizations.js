@@ -1,6 +1,8 @@
 // 조직(organisation)·지침(directive)·방법/표적 어휘 정의. SPEC §7을 그대로 데이터로 옮긴 것.
 // 프로토타입의 ORGS/DIRS/DKEYS/RANGE/METH/TGT 배열·객체를 포팅했다 (규칙 자체는 바꾸지 않음).
 
+import { gtdShares, blendWithFixed } from "./gtd-priors.js";
+
 /**
  * 세 조직의 정의. SPEC §7.1~7.3.
  * - key: events.csv의 org 컬럼에 그대로 들어가는 문자열 식별자
@@ -74,13 +76,23 @@ export const DIRECTIVES = {
   SUPPRESS: { radiusMult: 1.0, tempoMult: 0.3, weight: 0.2 },
 };
 
+// GTD(Global Terrorism Database) 실측 무기 분포 -> METHODS 가중치 유도.
+// gtd-priors.js의 출처 주석(phase1/knn.ipynb 셀 2, 1970~2015년 집계) 참고.
+const groundShares = gtdShares(["explosive", "firearm", "melee"]); // 셋 다 GTD weapontype 범주 -> GTD 비율 그대로 재정규화
+const navalShares = blendWithFixed(["explosive", "firearm", "vessel_ram"], { vessel_ram: 0.15 }); // vessel_ram은 GTD에 없는 범주라 기존 0.15를 그대로 고정하고, 남은 0.85를 explosive/firearm이 GTD 비율대로 나눠 가짐
+
 /**
  * 파벌(branch)별 공격 방법과 그 확률 가중치. SPEC §7.4.
  * 각 배열은 [메서드 이름들], [그에 대응하는 가중치들] 쌍이다.
  */
 export const METHODS = {
-  ground: { values: ["explosive", "firearm", "melee"], weights: [0.55, 0.35, 0.1] },
-  naval: { values: ["explosive", "firearm", "vessel_ram"], weights: [0.4, 0.45, 0.15] },
+  // GTD 유래: explosive/firearm/melee 전부 GTD weapontype 범주라 실측 비율을 그대로 썼다.
+  ground: { values: ["explosive", "firearm", "melee"], weights: groundShares },
+  // GTD 유래(일부): vessel_ram(선박 충돌)은 GTD 범주에 없어 기존 임의값 0.15를 그대로 유지했고,
+  // explosive/firearm만 GTD 비율로 재계산했다.
+  naval: { values: ["explosive", "firearm", "vessel_ram"], weights: navalShares },
+  // GTD 유래 아님 — incendiary(방화)는 GTD weapontype 범주에 없어 대응시킬 실측치가 없다.
+  // 이 값은 GTD에서 가져온 게 아니라 원래 프로토타입의 임의값이며, 바꾸지 않고 그대로 유지한다.
   air: { values: ["explosive", "incendiary"], weights: [0.7, 0.3] },
 };
 
