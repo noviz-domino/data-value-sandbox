@@ -909,10 +909,15 @@ function runApp({ events, periods, byDay, days, maxPerDay, campaigns, facilities
         const markerHtml = reveal
           ? '<em style="color:' + ORG_COLORS[e.org] + '">' + e.org.slice(0, 4) + "</em> "
           : '<em style="color:' + HEX.evt + '">•</em> ';
+        // target을 5자로 자르면(예: "infrastructure" -> "INFRA") 단어 중간이 잘린 채 그대로
+        // 끝나버려 무슨 말인지 알 수 없다(활동 피드 잘림 버그). .feed div는 이미 CSS에서
+        // white-space:nowrap + overflow:hidden + text-overflow:ellipsis를 갖고 있으니(위 CSS
+        // 참고) 여기서는 전체 단어를 그대로 넣고, 패널 폭보다 길 때만 CSS가 "…"으로 끝맺게
+        // 맡긴다 — 줄바꿈은 한 사건 = 한 줄이라는 피드의 터미널식 레이아웃을 깨뜨리므로 쓰지 않는다.
         return (
           "<div>" + markerHtml +
           Math.abs(e.lat).toFixed(1) + (e.lat < 0 ? "S" : "N") + " " +
-          e.lon.toFixed(1) + "E · " + e.method.toUpperCase() + " · " + e.target.slice(0, 5).toUpperCase() + "</div>"
+          e.lon.toFixed(1) + "E · " + e.method.toUpperCase() + " · " + e.target.toUpperCase() + "</div>"
         );
       })
       .join("");

@@ -78,8 +78,11 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
 
   // viewState를 직접 소유한다(controlled component 패턴). Deck에 항상 이 값을 넘기고,
   // 사용자가 드래그/휠로 바꾸면 onViewStateChange에서 갱신해 다시 넘긴다.
-  // 아시아-태평양 조직들이 한눈에 보이도록 longitude 120, latitude -5, zoom 1.5로 시작한다.
-  let viewState = { longitude: 120, latitude: -5, zoom: 1.5, pitch: 0, bearing: 0 };
+  // 기본 화면(AO). 예전엔 zoom 1.5라 화면의 80%가 사건이 하나도 없는 빈 바다/대륙이었다(첫 화면
+  // 결함) — 사건은 전부 인도네시아 부근 한 곳에 몰려 있으므로, "AO" 버튼(z-ao, main.js)이 쓰는
+  // 값(zoom 3, longitude 120, latitude -5)을 기본값으로도 그대로 쓴다. "세계" 버튼(z-world)은
+  // 그대로 남아 있어 필요하면 언제든 zoom 0.3으로 돌아갈 수 있다.
+  let viewState = { longitude: 120, latitude: -5, zoom: 3, pitch: 0, bearing: 0 };
 
   // 가장 최근 setFrame 인자를 기억해둔다 — layer 재계산 없이 뷰만 바꿀 때(setView) 쓸 일은
   // 없지만, destroy 전까지 마지막 프레임 정보를 들고 있으면 디버깅에 유용하다.
@@ -308,6 +311,11 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
       );
 
       // ── 5. 콜사인 라벨 (org.key, 마커 오른쪽) ───────────────────────────────
+      // 조직 3개의 기본 위치가 화면상 서로 몇 px 안으로 붙는 스코프/줌에서는(예: 기본 AO 뷰),
+      // 라벨을 마커에서 16px 띄우는 것만으로는 다른 조직의 마커·반경 링과 겹쳐 뭉개진다(라벨
+      // 겹침 결함). fontSettings:{sdf:true} + outlineWidth/outlineColor로 글자에 배경(--void)색
+      // 아웃라인(halo)을 둘러, 무엇과 겹치든 글자 자체는 항상 또렷하게 남게 한다 — 새 배경
+      // 박스를 그리는 대신 기존 미니멀한 라벨 그대로 두고 가독성만 확보한다.
       layers.push(
         new TextLayer({
           id: "org-labels",
@@ -318,7 +326,10 @@ export function createMap(container, { onHover, onFacilityClick, landGeo, coastG
           getSize: 11,
           fontFamily: '"IBM Plex Sans Condensed", system-ui, sans-serif',
           fontWeight: 600,
-          getPixelOffset: [16, 0],
+          fontSettings: { sdf: true },
+          outlineWidth: 2.5,
+          outlineColor: [...RGB.void, 255],
+          getPixelOffset: [20, 0],
           getTextAnchor: "start",
           getAlignmentBaseline: "center",
           pickable: false,

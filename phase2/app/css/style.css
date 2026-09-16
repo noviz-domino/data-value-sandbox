@@ -66,10 +66,12 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
 #map.drag{cursor:grabbing}
 #map.scope-armed{cursor:crosshair}
 .brk{position:absolute;width:13px;height:13px;border:1px solid var(--hair-lit);pointer-events:none}
-.brk.tl{top:8px;left:8px;border-right:0;border-bottom:0}
-.brk.tr{top:8px;right:8px;border-left:0;border-bottom:0}
-.brk.bl{bottom:8px;left:8px;border-right:0;border-top:0}
-.brk.br{bottom:8px;right:8px;border-left:0;border-top:0}
+/* tl/tr/bl/br 대신 brk-tl 등 합성 클래스를 쓴다 — 아래 .tl(진짜 시간창 패널)과 이름이 겹쳐
+   배경/패딩이 새어 들어오는 걸 막기 위함(정체불명의 회색 사각형 버그의 원인이었다). */
+.brk.brk-tl{top:8px;left:8px;border-right:0;border-bottom:0}
+.brk.brk-tr{top:8px;right:8px;border-left:0;border-bottom:0}
+.brk.brk-bl{bottom:8px;left:8px;border-right:0;border-top:0}
+.brk.brk-br{bottom:8px;right:8px;border-left:0;border-top:0}
 .readout{position:absolute;left:18px;bottom:14px;font-family:var(--f-mono);
   font-size:11px;color:var(--ink-dim);pointer-events:none;line-height:1.6}
 .readout i{color:var(--ink-mute);font-style:normal}
@@ -86,8 +88,12 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
 .scope-radius-label{display:flex;align-items:center;gap:6px;background:var(--riser);
   border:1px solid var(--hair-lit);padding:5px 10px;font-family:var(--f-mono);font-size:11px;
   color:var(--ink-dim)}
+/* line-height가 normal이면 IBM Plex Mono의 내부 leading이 border-box 계산과 어긋나 글자 위쪽이
+   잘린다(폰트 자체의 ascent/descent 합이 콘텐츠 박스 높이와 딱 맞아도, 브라우저가 <input>의 줄
+   높이를 셈할 때 그보다 더 큰 line-height를 쓰기 때문) — line-height:1로 고정해 박스 안에 정확히
+   맞춘다. */
 .scope-radius-label input{width:56px;background:var(--deck);border:1px solid var(--hair);
-  color:var(--ink);font-family:var(--f-mono);font-size:11px;padding:2px 4px}
+  color:var(--ink);font-family:var(--f-mono);font-size:11px;line-height:1;padding:4px 4px}
 #scope-btn.on{color:var(--void);background:var(--nw);border-color:var(--nw)}
 
 .reveal{position:absolute;top:14px;right:16px;display:flex;align-items:center;gap:9px;
@@ -195,8 +201,9 @@ body{background:var(--void);color:var(--ink);font-family:var(--f-sans);margin:0}
 .dtg{margin-left:auto;font-family:var(--f-mono);font-size:15px;color:var(--ink);letter-spacing:.04em}
 .win-input{display:flex;align-items:center;gap:5px;font-family:var(--f-cond);font-weight:600;
   font-size:10px;letter-spacing:.08em;color:var(--ink-mute);text-transform:uppercase}
+/* 위 .scope-radius-label input과 같은 이유(line-height:normal의 세로 잘림)로 line-height:1 고정. */
 .win-input input{width:64px;background:var(--riser);border:1px solid var(--hair-lit);
-  color:var(--ink);font-family:var(--f-mono);font-size:11px;padding:3px 5px}
+  color:var(--ink);font-family:var(--f-mono);font-size:11px;line-height:1;padding:4px 5px}
 #wac{display:block;width:100%;flex:1;cursor:ew-resize;min-height:0}
 
 .boot{position:absolute;inset:0;background:var(--void);z-index:9;padding:58px 0 0 58px;

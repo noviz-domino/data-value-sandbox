@@ -53,6 +53,26 @@ export function createWindowControl(canvas, { onChange } = {}) {
     tx.lineTo(w, axisY);
     tx.stroke();
 
+    // 눈금(tick) — SPEC M3에서 일별 활동 막대(옛 timeline.js)를 뗴어내면서, 창(band)이 전체
+    // 5년(1826일) 중 극히 일부만 차지할 때 축 나머지 대부분이 "그냥 빈 줄"처럼 보이는 문제가
+    // 남았다. 데이터를 다시 그리는 게 아니라, 전체 구간이 실제로는 하나의 눈금자(ruler)라는 걸
+    // 알아볼 수 있게 옅은 눈금만 더한다 — 새 기능이 아니라 이미 있는 D0/D(days-1) 라벨과 같은
+    // 축 장식의 연장. 간격은 총 일수에 맞춰 "보기 좋은" 값을 고른다(예: 1826일 -> 365일씩).
+    const niceStep = days <= 14 ? 1
+      : days <= 60 ? 7
+      : days <= 180 ? 30
+      : days <= 800 ? 90
+      : 365;
+    tx.strokeStyle = HEX.hair;
+    tx.lineWidth = 1;
+    for (let d = niceStep; d < days - 1; d += niceStep) {
+      const tx_ = dayToX(d, days, w);
+      tx.beginPath();
+      tx.moveTo(tx_ + 0.5, axisY - 3);
+      tx.lineTo(tx_ + 0.5, axisY + 3);
+      tx.stroke();
+    }
+
     // 선택된 창(band) — 배경 대비 밝은 사각형.
     const x0 = dayToX(windowStart, days, w);
     const x1 = dayToX(windowEnd, days, w);
@@ -77,8 +97,23 @@ export function createWindowControl(canvas, { onChange } = {}) {
     tx.fillText("D" + (days - 1), w - 2, h - 12);
     tx.textAlign = "center";
     tx.fillStyle = HEX.ink;
-    tx.fillText("D" + windowStart, Math.max(16, x0), 2);
-    tx.fillText("D" + windowEnd, Math.min(w - 16, x1), 2);
+    // 창(window)이 좁으면(예: 1825일 중 99일) x0/x1이 서로 몇 px밖에 안 떨어져 있어서, 각 라벨을
+    // 그냥 x0/x1에 중앙 정렬하면 두 글자가 "D1726D1825"처럼 겹쳐 뭉개진다. measureText로 실제
+    // 폭을 재서, 겹칠 만큼 가까우면 두 라벨을 band 중심 기준 좌우로 딱 안 겹치는 만큼만 벌린다.
+    const startLabel = "D" + windowStart;
+    const endLabel = "D" + windowEnd;
+    const startW = tx.measureText(startLabel).width;
+    const endW = tx.measureText(endLabel).width;
+    let startCx = Math.max(16, x0);
+    let endCx = Math.min(w - 16, x1);
+    const minGap = startW / 2 + endW / 2 + 4; // 4px = 라벨 사이 최소 여백
+    if (endCx - startCx < minGap) {
+      const mid = (startCx + endCx) / 2;
+      startCx = mid - minGap / 2;
+      endCx = mid + minGap / 2;
+    }
+    tx.fillText(startLabel, startCx, 2);
+    tx.fillText(endLabel, endCx, 2);
   }
 
   // 마우스가 창의 어느 구역 위에 있는지 판정한다: 좌/우 핸들, 내부(이동), 바깥(새 위치로 점프).

@@ -35,8 +35,12 @@
 
     <div class="stage">
       <div id="map"></div>
-      <div class="brk tl"></div><div class="brk tr"></div>
-      <div class="brk bl"></div><div class="brk br"></div>
+      <!-- 코너 장식 4개: 예전엔 class="brk tl"처럼 tl/tr/bl/br을 썼는데, 화면 맨 아래 진짜
+           시간창 패널도 class="tl"이라 .tl 셀렉터가 이 좌상단 장식까지 덮쳐써 배경색·패딩이
+           새어 들어왔다(정체불명의 회색 사각형 버그). brk-tl처럼 합성 클래스 하나로 바꿔
+           어떤 다른 컴포넌트와도 안 겹치게 한다. -->
+      <div class="brk brk-tl"></div><div class="brk brk-tr"></div>
+      <div class="brk brk-bl"></div><div class="brk brk-br"></div>
       <button class="reveal" id="rv"><span class="sw"></span><span id="rv-label">Reveal command layer</span></button>
       <div class="readout">
         <div><i id="lbl-cur">CUR</i> <span id="r-pos">--.--&nbsp;-&nbsp;&nbsp;---.--&nbsp;-</span></div>
